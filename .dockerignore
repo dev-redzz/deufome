@@ -1,5 +1,12 @@
-data/
-.git/
-testes/
-*.md
-.DS_Store
+.git
+.env
+vendor
+node_modules
+storage/dados
+storage/logs/*
+storage/framework/sessions/*
+storage/framework/views/*
+storage/framework/cache/data/*
+tests
+composer.local.json
+composer.local.lock

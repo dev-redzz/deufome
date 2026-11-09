@@ -1,4 +1,13 @@
-data/
+/vendor
+/node_modules
+/storage/dados
+/storage/*.key
+/.env
+/.phpunit.cache
+/public/hot
+/public/storage
+composer.local.json
+composer.local.lock
+*.log
 .DS_Store
 Thumbs.db
-__pycache__/
