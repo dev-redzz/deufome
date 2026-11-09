@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/img/icone-escuro.png">
+<link rel="stylesheet" href="/css/deufome.css?v={{v}}">
+<title>Deu Fome · Cozinha</title>
+</head>
+<body class="cozinha">
+<header>
+  <img src="/img/icone-escuro.png" alt="Deu Fome">
+  <h1 id="titulo">Cozinha</h1>
+  <button class="btn btn-p btn-claro" id="som">Ativar som</button>
+  <span class="relogio" id="relogio"></span>
+  <button class="btn btn-p" id="sair" aria-label="Sair">Sair</button>
+</header>
+<div class="colunas">
+  <section class="coluna"><h2>Novos <span class="n" id="n-recebido">0</span></h2><div id="c-recebido"></div></section>
+  <section class="coluna"><h2>Em preparo <span class="n" id="n-preparo">0</span></h2><div id="c-preparo"></div></section>
+  <section class="coluna"><h2>Prontos <span class="n" id="n-pronto">0</span></h2><div id="c-pronto"></div></section>
+</div>
+<script src="/js/comum.js?v={{v}}"></script>
+<script src="/js/cozinha.js?v={{v}}"></script>
+
+</body>
+</html>

@@ -1,0 +1,10 @@
+{
+  "name": "Deu Fome",
+  "short_name": "Deu Fome",
+  "start_url": "/tablet",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#FF5A1F",
+  "theme_color": "#FF5A1F",
+  "icons": [{ "src": "/img/icone-escuro.png", "sizes": "512x512", "type": "image/png" }]
+}
