@@ -15,6 +15,18 @@ if (str_starts_with($caminho, '/api/')) {
     rotear($_SERVER['REQUEST_METHOD'], $caminho);
 }
 
+if ($caminho === '/auth/google' || $caminho === '/auth/google/retorno') {
+    require __DIR__ . '/api.php';
+    try {
+        $caminho === '/auth/google' ? r_google_inicio() : r_google_retorno();
+    } catch (Throwable $e) {
+        error_log((string)$e);
+        registrar_erro('servidor', get_class($e) . ': ' . $e->getMessage(), $e->getFile() . ':' . $e->getLine(), $caminho);
+        header('Location: /admin#erro=google-falhou', true, 302);
+    }
+    return true;
+}
+
 if ($caminho === '/saude') {
     require __DIR__ . '/db.php';
     header('Content-Type: application/json');
@@ -44,13 +56,24 @@ if (preg_match('#^/arquivos/([a-z0-9-]+\.(jpg|png|webp))$#', $caminho, $m)) {
     return true;
 }
 
-$paginas = ['/' => 'admin.html', '/admin' => 'admin.html', '/tablet' => 'tablet.html', '/cozinha' => 'cozinha.html'];
+$paginas = ['/' => 'index.html', '/admin' => 'admin.html', '/cadastro' => 'admin.html', '/tablet' => 'tablet.html', '/cozinha' => 'cozinha.html', '/termos' => 'termos.html', '/privacidade' => 'privacidade.html'];
 if (isset($paginas[$caminho])) {
+    require_once __DIR__ . '/db.php';
     header('Content-Type: text/html; charset=utf-8');
     header('Cache-Control: no-cache');
     header('X-Frame-Options: DENY');
-    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'");
-    echo str_replace('{{v}}', versao_app(), (string)file_get_contents($publico . '/' . $paginas[$caminho]));
+    header("Content-Security-Policy: default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; manifest-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://accounts.google.com");
+    $h = fn(string $v) => htmlspecialchars($v, ENT_QUOTES);
+    $trocas = [
+        '{{v}}' => versao_app(),
+        '{{empresa}}' => $h(variavel('EMPRESA_NOME') ?: 'Deu Fome'),
+        '{{contato}}' => $h(variavel('EMAIL_CONTATO') ?: (variavel('PLATAFORMA_EMAIL') ?: 'contato@deufome.app')),
+        '{{foro}}' => $h(variavel('FORO') ?: 'Codó/MA'),
+        '{{data}}' => $h(variavel('DATA_TERMOS') ?: '9 de novembro de 2026'),
+        '{{ano}}' => date('Y'),
+        '{{url}}' => $h(rtrim(variavel('APP_URL') ?: ((https() ? 'https' : 'http') . '://' . preg_replace('/[^a-z0-9.:\-]/i', '', $_SERVER['HTTP_HOST'] ?? 'localhost')), '/')),
+    ];
+    echo strtr((string)file_get_contents($publico . '/' . $paginas[$caminho]), $trocas);
     return true;
 }
 

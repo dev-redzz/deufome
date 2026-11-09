@@ -24,7 +24,7 @@
   let online = true;
   let enviando = false;
   let chavePendente = null;
-  let timerInatividade, timerPoll, toquesLogo = [];
+  let timerInatividade, timerPoll, toquesLogo = [], ultimoFechado = false;
 
   function lerToken() { try { return localStorage.getItem(CHAVE_TOKEN); } catch { return null; } }
   function gravarToken(t) { try { t ? localStorage.setItem(CHAVE_TOKEN, t) : localStorage.removeItem(CHAVE_TOKEN); } catch {} }
@@ -128,6 +128,7 @@
       return;
     }
     if (e.versao_cardapio !== versaoCardapio) await carregarCardapio();
+    if (fechado() !== ultimoFechado) { ultimoFechado = fechado(); if (tela === 'cardapio') desenharCardapio(true); }
     if (!e.mesa) { mostrarSemMesa(); return; }
     document.querySelector('.sem-mesa')?.remove();
     if (tela === 'descanso') desenharDescanso();
@@ -216,7 +217,7 @@
       <div class="texto">
         <p class="boas">Que bom ter você aqui</p>
         <h1>${esc(estado?.estabelecimento || 'Deu Fome')}</h1>
-        <p>Escolha no cardápio, envie e acompanhe seu pedido daqui da mesa.</p>
+        ${fechado() ? `<div class="fechado-faixa">${icone('relogio', 24, 2.5)} ${esc(textoFechado())}</div>` : '<p>Escolha no cardápio, envie e acompanhe seu pedido daqui da mesa.</p>'}
         <button class="toque" id="comecar">Ver o cardápio<span class="seta">${icone('seta', 30, 3.5)}</span></button>
       </div>
       <div class="icone-grande"><img src="/img/icone-escuro.png" alt="Deu Fome"></div>
@@ -277,7 +278,7 @@
     const rol = cont.scrollTop;
     cont.dataset.tela = 'cardapio';
     if (!categoriaAtiva && categorias[0]) categoriaAtiva = categorias[0].id;
-    cont.innerHTML = categorias.map(c => `<section id="cat-${c.id}">
+    cont.innerHTML = (fechado() ? `<div class="aviso-fechado">${icone('relogio', 24, 2.5)} ${esc(textoFechado())} Você pode ver o cardápio, mas os pedidos estão pausados.</div>` : '') + categorias.map(c => `<section id="cat-${c.id}">
       <h2>${esc(c.nome)}</h2>
       <div class="grade">${c.produtos.map(p => {
         const q = qtdNoCarrinho(p.id);
@@ -316,6 +317,10 @@
     barra.querySelector('#verPedidos')?.addEventListener('click', () => irPara('pedidos'));
   }
 
+  const fechado = () => estado?.horario && estado.horario.aberto === false;
+  const textoFechado = () => 'Estamos fechados agora' + (estado?.horario?.proxima ? `. Abrimos ${estado.horario.proxima}.` : '.');
+  const taxaDe = v => estado?.taxa_servico > 0 ? Math.round(v * estado.taxa_servico / 100) : 0;
+
   /* ---------------------------------------------------- produto */
   function abrirProduto(p) {
     let qtd = 1;
@@ -338,7 +343,11 @@
         <button class="btn btn-azul btn-g" id="add"></button>
       </div></div>`, { classe: 'modal-produto' });
     const unit = () => p.preco + p.adicionais.filter(a => sel.has(a.id)).reduce((s, a) => s + a.preco, 0);
-    const pintar = () => { m.el.querySelector('#q').textContent = qtd; m.el.querySelector('#add').textContent = `Adicionar · ${real(unit() * qtd)}`; };
+    const pintar = () => {
+      m.el.querySelector('#q').textContent = qtd;
+      const b = m.el.querySelector('#add');
+      if (fechado()) { b.textContent = 'Fechado agora'; b.disabled = true; } else b.textContent = `Adicionar · ${real(unit() * qtd)}`;
+    };
     pintar();
     m.el.addEventListener('click', e => {
       if (e.target.closest('[data-fechar]')) return m.fechar();
@@ -408,6 +417,7 @@
 
   function confirmarPedido() {
     if (!online) return toast('Sem conexão. Chame um atendente.', 'erro');
+    if (fechado()) return toast(textoFechado(), 'erro');
     if (estado?.sessao?.status === 'conta_solicitada') return toast('A conta já foi pedida. Chame um atendente para pedir mais.', 'erro');
     const total = carrinho.reduce((s, i) => s + i.unit * i.qtd, 0);
     chavePendente = chavePendente || uid();
@@ -455,7 +465,7 @@
     const cont = raiz.querySelector('#conteudo');
     const pedidos = estado?.pedidos || [];
     const pediuConta = estado?.sessao?.status === 'conta_solicitada';
-    const assinatura = JSON.stringify([pedidos, estado?.total, estado?.sessao]);
+    const assinatura = JSON.stringify([pedidos, estado?.total, estado?.sessao, estado?.avaliado, estado?.taxa_servico]);
     if (cont.dataset.assinatura === assinatura && cont.dataset.tela === 'pedidos') { desenharCats(); atualizarBarra(); return; }
     const rol = cont.dataset.tela === 'pedidos' ? cont.scrollTop : 0;
     cont.dataset.assinatura = assinatura;
@@ -476,24 +486,67 @@
         </div>`;
       }).join('') : `<div class="vazio"><div style="color:var(--brasa)">${icone('cardapio', 64, 2)}</div><p>Nenhum pedido feito nesta mesa ainda.</p><button class="btn btn-azul btn-g" id="irCardapio">Ver cardápio</button></div>`}
       ${pedidos.length ? `<div class="pedido-bloco" style="display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-        <div style="flex:1"><div style="color:var(--texto-2)">Total da conta</div><div style="font-family:var(--display);font-weight:800;font-size:36px">${real(estado.total)}</div></div>
-        ${pediuConta ? '' : `<button class="btn btn-borda btn-g" id="irCardapio">Pedir mais</button><button class="btn btn-marinho btn-g" id="pedirConta">${icone('conta', 26)} Pedir a conta</button>`}
+        <div class="contas-tablet">${taxaDe(estado.total) ? `<div class="lt"><span>Consumo</span><span>${real(estado.total)}</span></div><div class="lt"><span>Taxa de serviço (${estado.taxa_servico}%, opcional)</span><span>${real(taxaDe(estado.total))}</span></div>` : ''}
+          <div style="color:var(--texto-2)">Total da conta</div><div style="font-family:var(--display);font-weight:800;font-size:36px">${real(estado.total + taxaDe(estado.total))}</div></div>
+        ${pediuConta ? (estado.avaliado ? '<span class="chip verde" style="font-size:16px;padding:8px 14px">Obrigado pela avaliação!</span>' : `<button class="btn btn-azul btn-g" id="avaliarBtn">${icone('estrela', 26, 2.5)} Avaliar atendimento</button>`) : `<button class="btn btn-borda btn-g" id="irCardapio">Pedir mais</button><button class="btn btn-marinho btn-g" id="pedirConta">${icone('conta', 26)} Pedir a conta</button>`}
       </div>` : ''}`;
     cont.querySelectorAll('#irCardapio').forEach(b => b.onclick = () => irPara('cardapio'));
     cont.querySelector('#pedirConta')?.addEventListener('click', pedirConta);
+    cont.querySelector('#avaliarBtn')?.addEventListener('click', abrirAvaliacao);
     desenharCats();
     atualizarBarra();
   }
 
   function pedirConta() {
     const m = modal(`<div class="confirmar"><div style="color:var(--brasa)">${icone('conta', 56, 2)}</div><h2>Pedir a conta?</h2>
-      <p style="font-size:20px;color:var(--texto-2)">Total até agora: <b style="color:var(--marinho)">${real(estado.total)}</b>.<br>Depois disso, novos pedidos só com o atendente.</p>
+      <p style="font-size:20px;color:var(--texto-2)">Total até agora: <b style="color:var(--marinho)">${real(estado.total + taxaDe(estado.total))}</b>${taxaDe(estado.total) ? ` <small>(com ${estado.taxa_servico}% de serviço)</small>` : ''}.<br>Depois disso, novos pedidos só com o atendente.</p>
       <div class="botoes"><button class="btn btn-borda btn-g" data-fechar>Ainda não</button><button class="btn btn-marinho btn-g" id="sim">Sim, pedir a conta</button></div></div>`);
     m.el.addEventListener('click', async e => {
       if (e.target.closest('[data-fechar]')) return m.fechar();
       if (!e.target.closest('#sim')) return;
-      try { await apiT('/api/tablet/chamar', { metodo: 'POST', dados: { tipo: 'conta' } }); m.fechar(); toast('Conta solicitada. Já vamos até você!'); await buscarEstado(); }
+      try { await apiT('/api/tablet/chamar', { metodo: 'POST', dados: { tipo: 'conta' } }); m.fechar(); await buscarEstado(); if (!estado?.avaliado) abrirAvaliacao(true); else toast('Conta solicitada. Já vamos até você!'); }
       catch (er) { toast(er.message, 'erro'); }
+    });
+  }
+
+  function abrirAvaliacao(posConta) {
+    let nota = 0;
+    const tags = new Set();
+    const ROTULOS = ['', 'Muito ruim', 'Ruim', 'Regular', 'Bom', 'Excelente'];
+    const BOAS = ['Comida ótima', 'Atendimento rápido', 'Ambiente agradável', 'Preço justo'];
+    const RUINS = ['Demorou', 'Pedido errado', 'Comida fria', 'Tablet difícil de usar'];
+    const m = modal(`<div class="avaliar">
+      ${posConta ? '<p class="chip verde" style="font-size:15px">Conta solicitada, um atendente já vem até você</p>' : ''}
+      <h2>Como foi sua experiência?</h2>
+      <p style="color:var(--texto-2);margin:0">Sua opinião ajuda o restaurante a melhorar.</p>
+      <div class="notas">${[1, 2, 3, 4, 5].map(n => `<button data-nota="${n}" aria-label="${n} estrelas">${icone('estrela', 44, 0).replace('fill="none"', 'fill="currentColor"')}</button>`).join('')}</div>
+      <div class="rotulo-nota" id="rotulo">Toque nas estrelas</div>
+      <div class="tags" id="tags"></div>
+      <textarea id="coment" rows="2" maxlength="400" placeholder="Quer deixar um comentário? (opcional)"></textarea>
+      <div class="botoes"><button class="btn btn-borda btn-g" data-fechar>Agora não</button><button class="btn btn-azul btn-g" id="enviarAv" disabled>Enviar avaliação</button></div>
+    </div>`);
+    const pintar = () => {
+      m.el.querySelectorAll('[data-nota]').forEach(b => b.classList.toggle('on', Number(b.dataset.nota) <= nota));
+      m.el.querySelector('#rotulo').textContent = nota ? ROTULOS[nota] : 'Toque nas estrelas';
+      const lista = nota >= 4 ? BOAS : nota ? [...RUINS, ...BOAS.slice(0, 2)] : [];
+      [...tags].forEach(t => { if (!lista.includes(t)) tags.delete(t); });
+      m.el.querySelector('#tags').innerHTML = lista.map(t => `<button data-tag="${esc(t)}" class="${tags.has(t) ? 'marcada' : ''}">${esc(t)}</button>`).join('');
+      m.el.querySelector('#enviarAv').disabled = !nota;
+    };
+    m.el.addEventListener('click', async e => {
+      if (e.target.closest('[data-fechar]')) return m.fechar();
+      const n = e.target.closest('[data-nota]'); if (n) { nota = Number(n.dataset.nota); return pintar(); }
+      const t = e.target.closest('[data-tag]'); if (t) { const v = t.dataset.tag; tags.has(v) ? tags.delete(v) : tags.add(v); return pintar(); }
+      const b = e.target.closest('#enviarAv');
+      if (b) {
+        b.disabled = true;
+        try {
+          await apiT('/api/tablet/avaliar', { metodo: 'POST', dados: { nota, tags: [...tags], comentario: m.el.querySelector('#coment').value } });
+          m.el.querySelector('.avaliar').innerHTML = `<div class="enviado" style="padding:20px 0"><div class="selo-ok">${icone('check', 64, 3.5)}</div><h2>Obrigado!</h2><p>Sua avaliação foi enviada.</p></div>`;
+          setTimeout(() => m.fechar(), 2200);
+          buscarEstado();
+        } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
+      }
     });
   }
 

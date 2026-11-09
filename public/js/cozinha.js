@@ -1,5 +1,7 @@
 (() => {
-  const { icone, esc, api, toast, segundosDesde, tempo } = DF;
+  const { icone, esc, api, toast, segundosDesde, tempo, imprimir } = DF;
+  let estab = '', autoImprimir = false, pedidosAtuais = [];
+  try { autoImprimir = localStorage.getItem('deufome_auto_imprimir') === '1'; } catch {}
   const ATRASO_MIN = 15;
   let conhecidos = null, somLigado = false, ctx;
   const proximo = { recebido: ['preparo', 'Começar preparo', 'btn-azul'], preparo: ['pronto', 'Marcar como pronto', 'btn-sucesso'], pronto: ['entregue', 'Entregue na mesa', 'btn-marinho'] };
@@ -17,7 +19,9 @@
       const r = await api('/api/cozinha/pedidos');
       const novos = conhecidos ? r.pedidos.filter(p => !conhecidos.has(p.id)) : [];
       if (novos.length) bip();
+      pedidosAtuais = r.pedidos;
       desenhar(r.pedidos, new Set(novos.map(p => p.id)));
+      if (autoImprimir && novos.length) imprimir(novos.map(textoTicket).join('<div style="page-break-after:always"></div>'));
       conhecidos = new Set(r.pedidos.map(p => p.id));
     } catch (e) {
       if (e.status === 401) location.href = '/admin?voltar=/cozinha';
@@ -37,13 +41,32 @@
           <div class="num">Pedido ${p.numero}</div>
           <ul>${p.itens.map(i => `<li><b>${i.quantidade}×</b>${esc(i.nome)}${i.adicionais.length ? `<small>+ ${esc(i.adicionais.join(', '))}</small>` : ''}${i.observacao ? `<small class="obs">${esc(i.observacao)}</small>` : ''}</li>`).join('')}</ul>
           <button class="btn ${cls}" data-id="${p.id}" data-st="${prox}">${rot}</button>
+          <button class="voltar" data-imprimir="${p.id}">${icone('impressora', 14, 2)} imprimir</button>
           ${anterior[st] ? `<button class="voltar" data-id="${p.id}" data-st="${anterior[st]}">desfazer</button>` : ''}
         </div>`;
       }).join('') || '<p class="nada">Nenhum pedido nesta etapa.</p>';
     });
   }
 
+  function textoTicket(p) {
+    const hora = new Date(p.created_at.replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+    return `<h1>${esc(estab)}</h1><h2>MESA ${String(p.mesa).padStart(2, '0')}</h2><div class="c">Pedido ${p.numero} · ${hora}</div><hr>
+      ${p.itens.map(i => `<div class="g">${i.quantidade}x ${esc(i.nome)}</div>${i.adicionais.length ? `<div class="add">+ ${esc(i.adicionais.join(', '))}</div>` : ''}${i.observacao ? `<div class="obs">** ${esc(i.observacao)} **</div>` : ''}`).join('')}<hr>`;
+  }
+
+  const botaoAuto = document.getElementById('autoImp');
+  const pintarAuto = () => botaoAuto.textContent = autoImprimir ? 'Impressão automática: ligada' : 'Impressão automática';
+  pintarAuto();
+  botaoAuto.onclick = () => {
+    autoImprimir = !autoImprimir;
+    try { localStorage.setItem('deufome_auto_imprimir', autoImprimir ? '1' : '0'); } catch {}
+    pintarAuto();
+    toast(autoImprimir ? 'Pedidos novos serão impressos assim que chegarem.' : 'Impressão automática desligada.');
+  };
+
   document.querySelector('.colunas').addEventListener('click', async e => {
+    const imp = e.target.closest('[data-imprimir]');
+    if (imp) { const p = pedidosAtuais.find(x => x.id == imp.dataset.imprimir); if (p) imprimir(textoTicket(p)); return; }
     const b = e.target.closest('[data-id]'); if (!b) return;
     b.disabled = true;
     try { await api(`/api/cozinha/pedidos/${b.dataset.id}/status`, { metodo: 'POST', dados: { status: b.dataset.st } }); await carregar(); }
@@ -51,7 +74,7 @@
   });
 
   document.getElementById('sair').onclick = async () => { await api('/api/logout', { metodo: 'POST' }).catch(() => {}); location.href = '/admin'; };
-  api('/api/me').then(u => document.getElementById('titulo').innerHTML = `Cozinha<small>${esc(u.estabelecimento)}</small>`).catch(() => {});
+  api('/api/me').then(u => { estab = u.estabelecimento || ''; document.getElementById('titulo').innerHTML = `Cozinha<small>${esc(estab)}</small>`; }).catch(() => {});
   carregar();
   setInterval(carregar, 2000);
 })();

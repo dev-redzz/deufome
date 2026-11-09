@@ -1,7 +1,9 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/servicos.php';
+require_once __DIR__ . '/contas.php';
+require_once __DIR__ . '/relatorios.php';
 
 const ONLINE_SEGUNDOS = 90;
 const PAREAMENTO_MINUTOS = 10;
@@ -45,7 +47,7 @@ function iniciar_sessao_php(): void
     ini_set('session.gc_maxlifetime', '43200');
     session_save_path(SESSAO_DIR);
     session_name(https() ? '__Host-deufome' : 'deufome_staff');
-    session_set_cookie_params(['httponly' => true, 'samesite' => 'Strict', 'path' => '/', 'secure' => https()]);
+    session_set_cookie_params(['httponly' => true, 'samesite' => 'Lax', 'path' => '/', 'secure' => https()]);
     session_start();
 }
 
@@ -94,7 +96,7 @@ function dispositivo(): array
 {
     $token = $_SERVER['HTTP_X_DEVICE_TOKEN'] ?? '';
     if (strlen($token) < 40) erro(401, 'Dispositivo não ativado.');
-    $st = db()->prepare('SELECT d.*, t.nome AS estabelecimento, t.status AS tenant_status, m.numero AS mesa_numero, m.nome AS mesa_nome
+    $st = db()->prepare('SELECT d.*, t.nome AS estabelecimento, t.status AS tenant_status, t.horarios, t.fuso, t.taxa_servico, m.numero AS mesa_numero, m.nome AS mesa_nome
         FROM devices d JOIN tenants t ON t.id = d.tenant_id LEFT JOIN tables m ON m.id = d.table_id AND m.tenant_id = d.tenant_id AND m.ativo = 1
         WHERE d.token_hash = ?');
     $st->execute([hash_token($token)]);
@@ -241,6 +243,22 @@ function rotear(string $metodo, string $caminho): void
         ['GET', '#^/api/me$#', 'r_me'],
         ['GET', '#^/api/info$#', 'r_info'],
         ['POST', '#^/api/tablet/ativar$#', 'r_tablet_ativar'],
+        ['POST', '#^/api/cadastro$#', 'r_cadastro'],
+        ['GET', '#^/api/cadastro/google$#', 'r_cadastro_google_ler'],
+        ['POST', '#^/api/cadastro/google$#', 'r_cadastro_google'],
+        ['POST', '#^/api/senha/esqueci$#', 'r_senha_esqueci'],
+        ['POST', '#^/api/senha/redefinir$#', 'r_senha_redefinir'],
+        ['POST', '#^/api/erros$#', 'r_erro_navegador'],
+        ['POST', '#^/api/tablet/avaliar$#', 'r_tablet_avaliar'],
+        ['GET', '#^/api/relatorios$#', 'r_relatorios'],
+        ['GET', '#^/api/caixa$#', 'r_caixa'],
+        ['POST', '#^/api/sugestoes$#', 'r_sugestao_criar'],
+        ['GET', '#^/api/plataforma/status$#', 'r_plat_status'],
+        ['POST', '#^/api/plataforma/backup/enviar$#', 'r_plat_backup_enviar'],
+        ['GET', '#^/api/plataforma/erros$#', 'r_plat_erros'],
+        ['POST', '#^/api/plataforma/erros/(\d+)$#', 'r_plat_erro_salvar'],
+        ['GET', '#^/api/plataforma/sugestoes$#', 'r_plat_sugestoes'],
+        ['POST', '#^/api/plataforma/sugestoes/(\d+)$#', 'r_plat_sugestao_salvar'],
         // tablet
         ['GET', '#^/api/tablet/estado$#', 'r_tablet_estado'],
         ['GET', '#^/api/tablet/cardapio$#', 'r_tablet_cardapio'],
@@ -302,6 +320,7 @@ function rotear(string $metodo, string $caminho): void
             $origem = parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_HOST) . (parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_PORT) ? ':' . parse_url($_SERVER['HTTP_ORIGIN'], PHP_URL_PORT) : '');
             if (strcasecmp($origem, $_SERVER['HTTP_HOST'] ?? '') !== 0) erro(403, 'Origem não permitida.');
         }
+        if ($metodo === 'GET') tarefas_diarias();
         foreach ($r as [$m, $re, $fn]) {
             if ($m === $metodo && preg_match($re, $caminho, $mm)) {
                 array_shift($mm);
@@ -312,8 +331,10 @@ function rotear(string $metodo, string $caminho): void
     } catch (HttpErro $e) {
         responder(['erro' => $e->getMessage()], $e->http);
     } catch (Throwable $e) {
+        if (db()->inTransaction()) db()->rollBack();
         error_log((string)$e);
-        responder(['erro' => 'Erro interno.'], 500);
+        registrar_erro('servidor', get_class($e) . ': ' . $e->getMessage(), $e->getFile() . ':' . $e->getLine() . "\n" . $e->getTraceAsString(), $metodo . ' ' . $caminho);
+        responder(['erro' => 'Algo deu errado. Tente de novo em instantes.'], 500);
     }
 }
 
@@ -361,7 +382,7 @@ function r_logout(): never
 
 function r_info(): never
 {
-    responder(['demo' => DEMO, 'versao' => versao_app()]);
+    responder(['demo' => DEMO, 'versao' => versao_app(), 'google' => google_configurado(), 'cadastro' => cadastro_aberto()]);
 }
 
 function r_me(): never
@@ -413,10 +434,38 @@ function r_tablet_estado(): never
         'sessao' => $sessao ? ['id' => $sessao['id'], 'status' => $sessao['status']] : null,
         'pedidos' => $sessao ? pedidos_da_sessao((int)$d['tenant_id'], $sessao['id']) : [],
         'total' => $sessao ? total_sessao((int)$d['tenant_id'], $sessao['id']) : 0,
+        'taxa_servico' => (int)$d['taxa_servico'],
+        'horario' => situacao_horario($d),
+        'avaliado' => $sessao ? (bool)avaliacao_da_sessao($sessao['id']) : false,
         'chamados_abertos' => $chamados,
         'versao_cardapio' => versao_cardapio((int)$d['tenant_id']),
         'versao_app' => versao_app(),
     ]);
+}
+
+function avaliacao_da_sessao(string $sid): ?array
+{
+    $st = db()->prepare('SELECT nota FROM avaliacoes WHERE session_id = ?');
+    $st->execute([$sid]);
+    return $st->fetch() ?: null;
+}
+
+function r_tablet_avaliar(): never
+{
+    $d = dispositivo();
+    exigir_mesa($d);
+    $sessao = sessao_aberta((int)$d['tenant_id'], (int)$d['table_id']);
+    if (!$sessao) erro(409, 'Não há atendimento aberto nesta mesa.');
+    if (avaliacao_da_sessao($sessao['id'])) erro(409, 'Esta mesa já avaliou o atendimento.');
+    $in = entrada();
+    $nota = (int)($in['nota'] ?? 0);
+    if ($nota < 1 || $nota > 5) erro(422, 'Escolha de 1 a 5 estrelas.');
+    $permitidas = ['Comida ótima', 'Atendimento rápido', 'Ambiente agradável', 'Preço justo', 'Demorou', 'Pedido errado', 'Comida fria', 'Tablet difícil de usar'];
+    $tags = array_values(array_intersect($permitidas, array_map('strval', (array)($in['tags'] ?? []))));
+    $coment = mb_substr(trim(strip_tags((string)($in['comentario'] ?? ''))), 0, 400);
+    db()->prepare('INSERT INTO avaliacoes (tenant_id, session_id, table_id, nota, tags, comentario, created_at) VALUES (?,?,?,?,?,?,?)')
+        ->execute([$d['tenant_id'], $sessao['id'], $d['table_id'], $nota, json_encode($tags, JSON_UNESCAPED_UNICODE), $coment, agora()]);
+    responder(['ok' => true], 201);
 }
 
 function r_tablet_cardapio(): never
@@ -434,6 +483,8 @@ function r_tablet_pedido(): never
     $in = entrada();
     $chave = (string)($in['chave'] ?? '');
     if (!preg_match('/^[A-Za-z0-9-]{8,64}$/', $chave)) erro(422, 'Chave do pedido inválida.');
+    $hor = situacao_horario($d);
+    if (!$hor['aberto']) erro(409, 'Estamos fechados agora' . ($hor['proxima'] ? ', abrimos ' . $hor['proxima'] : '') . '. Não é possível fazer pedidos.');
     $itens = $in['itens'] ?? null;
     if (!is_array($itens) || count($itens) < 1 || count($itens) > 40) erro(422, 'Carrinho vazio ou grande demais.');
 
@@ -565,7 +616,9 @@ function r_cozinha_status(string $id): never
     $atual = $st->fetchColumn();
     if (!$atual) erro(404, 'Pedido não encontrado.');
     if (!in_array($novo, $permitidos[$atual] ?? [], true)) erro(409, 'Mudança de status não permitida.');
-    db()->prepare('UPDATE orders SET status = ?, updated_at = ? WHERE id = ?')->execute([$novo, agora(), (int)$id]);
+    $marca = ['preparo' => 'preparo_em', 'pronto' => 'pronto_em', 'entregue' => 'entregue_em', 'recebido' => null][$novo];
+    db()->prepare('UPDATE orders SET status = ?, updated_at = ?' . ($marca ? ", $marca = COALESCE($marca, ?)" : '') . ' WHERE id = ?')
+        ->execute($marca ? [$novo, agora(), agora(), (int)$id] : [$novo, agora(), (int)$id]);
     responder(['ok' => true]);
 }
 
@@ -596,29 +649,84 @@ function r_salao_sessao(string $id): never
 {
     $u = funcionario();
     $s = sessao_do_tenant((int)$u['tenant_id'], $id);
-    responder(['sessao' => $s, 'pedidos' => pedidos_da_sessao((int)$u['tenant_id'], $id), 'total' => total_sessao((int)$u['tenant_id'], $id)]);
+    $t = tenant_atual($u);
+    $pg = db()->prepare('SELECT forma, valor, created_at FROM payments WHERE session_id = ? ORDER BY id');
+    $pg->execute([$id]);
+    $mesa = db()->prepare('SELECT nome FROM tables WHERE id = ?');
+    $mesa->execute([$s['table_id']]);
+    responder(['sessao' => $s, 'mesa' => $mesa->fetchColumn(), 'estabelecimento' => $t['nome'], 'pedidos' => pedidos_da_sessao((int)$u['tenant_id'], $id),
+        'total' => total_sessao((int)$u['tenant_id'], $id), 'taxa_servico' => (int)$t['taxa_servico'], 'pagamentos' => $pg->fetchAll(),
+        'avaliacao' => avaliacao_completa($id)]);
 }
+
+function tenant_atual(array $u): array
+{
+    $st = db()->prepare('SELECT * FROM tenants WHERE id = ?');
+    $st->execute([$u['tenant_id']]);
+    return $st->fetch();
+}
+
+function avaliacao_completa(string $sid): ?array
+{
+    $st = db()->prepare('SELECT nota, tags, comentario, created_at FROM avaliacoes WHERE session_id = ?');
+    $st->execute([$sid]);
+    $a = $st->fetch();
+    if (!$a) return null;
+    $a['tags'] = json_decode($a['tags'], true) ?: [];
+    return $a;
+}
+
+const FORMAS = ['pix', 'dinheiro', 'credito', 'debito'];
 
 function r_salao_fechar(string $id): never
 {
     $u = funcionario();
     $tid = (int)$u['tenant_id'];
-    $s = sessao_do_tenant($tid, $id);
-    if (!in_array($s['status'], ['aberta', 'conta_solicitada'], true)) erro(409, 'Esta sessão já foi encerrada.');
-    $forma = (string)(entrada()['forma'] ?? '');
-    if (!in_array($forma, ['pix', 'dinheiro', 'credito', 'debito'], true)) erro(422, 'Escolha a forma de pagamento.');
+    $t = tenant_atual($u);
+    $in = entrada();
     $pdo = db();
     $pdo->beginTransaction();
-    $total = total_sessao($tid, $id);
-    $pdo->prepare("UPDATE table_sessions SET status = 'fechada', fechada_em = ?, fechada_por = ?, forma_pagamento = ?, total = ? WHERE id = ?")
-        ->execute([agora(), $u['id'], $forma, $total, $id]);
-    $pdo->prepare("UPDATE service_calls SET status = 'atendido', atendido_em = ? WHERE tenant_id = ? AND (session_id = ? OR (table_id = ? AND status = 'aberto'))")
-        ->execute([agora(), $tid, $id, $s['table_id']]);
-    $pdo->prepare("UPDATE orders SET status = 'entregue', updated_at = ? WHERE session_id = ? AND status IN ('recebido','preparo','pronto')")
-        ->execute([agora(), $id]);
-    $pdo->commit();
-    auditar($tid, 'usuario:' . $u['id'], 'sessao.fechada', $id, ['total' => $total, 'forma' => $forma]);
-    responder(['ok' => true, 'total' => $total]);
+    try {
+        $s = sessao_do_tenant($tid, $id);
+        if (!in_array($s['status'], ['aberta', 'conta_solicitada'], true)) erro(409, 'Esta conta já foi fechada.');
+        $subtotal = total_sessao($tid, $id);
+        $pct = max(0, min(30, (int)$t['taxa_servico']));
+        $taxa = !empty($in['cobrar_taxa']) && $pct > 0 ? (int)round($subtotal * $pct / 100) : 0;
+        $total = $subtotal + $taxa;
+        $pessoas = max(1, min(50, (int)($in['pessoas'] ?? 1)));
+        $pagamentos = $in['pagamentos'] ?? null;
+        if ($pagamentos === null && isset($in['forma'])) $pagamentos = [['forma' => $in['forma'], 'valor' => $total]];
+        if (!is_array($pagamentos) || !$pagamentos) erro(422, 'Informe como a conta foi paga.');
+        if (count($pagamentos) > 50) erro(422, 'Pagamentos demais.');
+        $soma = 0;
+        $limpos = [];
+        foreach ($pagamentos as $p) {
+            $forma = (string)($p['forma'] ?? '');
+            if (!in_array($forma, FORMAS, true)) erro(422, 'Escolha a forma de cada pagamento.');
+            $valor = (int)($p['valor'] ?? 0);
+            if ($valor <= 0) erro(422, 'Cada pagamento precisa ter um valor.');
+            $soma += $valor;
+            $limpos[] = [$forma, $valor];
+        }
+        if ($soma !== $total) erro(422, 'Os pagamentos somam ' . number_format($soma / 100, 2, ',', '.') . ', mas a conta é ' . number_format($total / 100, 2, ',', '.') . '.');
+        $porForma = [];
+        foreach ($limpos as [$f, $v]) $porForma[$f] = ($porForma[$f] ?? 0) + $v;
+        arsort($porForma);
+        $ins = $pdo->prepare('INSERT INTO payments (tenant_id, session_id, forma, valor, registrado_por, created_at) VALUES (?,?,?,?,?,?)');
+        foreach ($limpos as [$forma, $valor]) $ins->execute([$tid, $id, $forma, $valor, $u['id'], agora()]);
+        $pdo->prepare("UPDATE table_sessions SET status = 'fechada', fechada_em = ?, fechada_por = ?, forma_pagamento = ?, subtotal = ?, taxa = ?, total = ?, pessoas = ? WHERE id = ?")
+            ->execute([agora(), $u['id'], count($porForma) > 1 ? 'dividido' : array_key_first($porForma), $subtotal, $taxa, $total, $pessoas, $id]);
+        $pdo->prepare("UPDATE service_calls SET status = 'atendido', atendido_em = ? WHERE tenant_id = ? AND (session_id = ? OR (table_id = ? AND status = 'aberto'))")
+            ->execute([agora(), $tid, $id, $s['table_id']]);
+        $pdo->prepare("UPDATE orders SET status = 'entregue', updated_at = ?, entregue_em = COALESCE(entregue_em, ?) WHERE session_id = ? AND status IN ('recebido','preparo','pronto')")
+            ->execute([agora(), agora(), $id]);
+        $pdo->commit();
+    } catch (Throwable $e) {
+        $pdo->rollBack();
+        throw $e;
+    }
+    auditar($tid, 'usuario:' . $u['id'], 'sessao.fechada', $id, ['total' => $total, 'taxa' => $taxa, 'pagamentos' => $limpos]);
+    responder(['ok' => true, 'subtotal' => $subtotal, 'taxa' => $taxa, 'total' => $total]);
 }
 
 function r_salao_reabrir(string $id): never
@@ -1115,25 +1223,41 @@ function r_equipe_salvar(string $id): never
 
 /* -------------------------------------------------------------- configurações */
 
+const FUSOS = ['America/Sao_Paulo' => 'Brasília, São Paulo, Nordeste', 'America/Fortaleza' => 'Maranhão, Ceará, Piauí', 'America/Belem' => 'Pará, Amapá', 'America/Manaus' => 'Amazonas', 'America/Cuiaba' => 'Mato Grosso', 'America/Campo_Grande' => 'Mato Grosso do Sul', 'America/Porto_Velho' => 'Rondônia', 'America/Boa_Vista' => 'Roraima', 'America/Rio_Branco' => 'Acre', 'America/Noronha' => 'Fernando de Noronha'];
+
 function r_config_ler(): never
 {
     $u = equipe('dono', 'gerente');
-    $st = db()->prepare('SELECT nome, slug FROM tenants WHERE id = ?');
-    $st->execute([$u['tenant_id']]);
-    responder($st->fetch());
+    $t = tenant_atual($u);
+    $h = json_decode((string)$t['horarios'], true);
+    if (!is_array($h)) $h = ['ativo' => false, 'dias' => array_fill_keys(['0', '1', '2', '3', '4', '5', '6'], [['18:00', '23:00']])];
+    responder(['nome' => $t['nome'], 'slug' => $t['slug'], 'taxa_servico' => (int)$t['taxa_servico'], 'fuso' => $t['fuso'], 'fusos' => FUSOS, 'horarios' => $h, 'situacao' => situacao_horario($t)]);
 }
 
 function r_config_salvar(): never
 {
     $u = equipe('dono', 'gerente');
     $in = entrada();
-    if (array_key_exists('nome', $in)) db()->prepare('UPDATE tenants SET nome = ? WHERE id = ?')->execute([texto($in, 'nome', 60), $u['tenant_id']]);
+    $tid = $u['tenant_id'];
+    if (array_key_exists('nome', $in)) db()->prepare('UPDATE tenants SET nome = ? WHERE id = ?')->execute([texto($in, 'nome', 60), $tid]);
     if (!empty($in['pin'])) {
         if (!preg_match('/^\d{4}$/', (string)$in['pin'])) erro(422, 'O PIN precisa ter 4 números.');
-        db()->prepare('UPDATE tenants SET pin_gerente_hash = ? WHERE id = ?')->execute([password_hash((string)$in['pin'], PASSWORD_DEFAULT), $u['tenant_id']]);
-        auditar((int)$u['tenant_id'], 'usuario:' . $u['id'], 'config.pin_alterado');
+        db()->prepare('UPDATE tenants SET pin_gerente_hash = ? WHERE id = ?')->execute([password_hash((string)$in['pin'], PASSWORD_DEFAULT), $tid]);
+        auditar($tid, 'usuario:' . $u['id'], 'config.pin_alterado');
     }
-    responder(['ok' => true]);
+    if (array_key_exists('taxa_servico', $in)) {
+        $pct = (int)$in['taxa_servico'];
+        if ($pct < 0 || $pct > 30) erro(422, 'A taxa de serviço deve ser de 0 a 30%.');
+        db()->prepare('UPDATE tenants SET taxa_servico = ? WHERE id = ?')->execute([$pct, $tid]);
+    }
+    if (array_key_exists('fuso', $in)) {
+        if (!isset(FUSOS[$in['fuso']])) erro(422, 'Fuso horário inválido.');
+        db()->prepare('UPDATE tenants SET fuso = ? WHERE id = ?')->execute([$in['fuso'], $tid]);
+    }
+    if (array_key_exists('horarios', $in)) {
+        db()->prepare('UPDATE tenants SET horarios = ? WHERE id = ?')->execute([json_encode(horarios_validos($in['horarios'])), $tid]);
+    }
+    responder(['ok' => true, 'situacao' => situacao_horario(tenant_atual($u))]);
 }
 
 function r_minha_senha(): never
@@ -1216,4 +1340,91 @@ function r_plat_backup(): never
         @unlink($arq);
     }
     exit;
+}
+
+/* -------------------------------------------------------------- monitor, sugestões e status */
+
+function r_erro_navegador(): never
+{
+    limite('js:' . ip_cliente(), 30, 3600);
+    $in = entrada();
+    $msg = mb_substr(trim((string)($in['mensagem'] ?? '')), 0, 500);
+    if ($msg === '' || preg_match('/ResizeObserver loop|Script error\.?$/i', $msg)) responder(['ok' => true]);
+    registrar_erro('navegador', $msg, mb_substr((string)($in['detalhe'] ?? ''), 0, 3000), mb_substr((string)($in['url'] ?? ''), 0, 300));
+    responder(['ok' => true]);
+}
+
+function r_sugestao_criar(): never
+{
+    $u = usuario_logado();
+    $in = entrada();
+    $tipo = (string)($in['tipo'] ?? '');
+    if (!in_array($tipo, ['sugestao', 'problema', 'elogio'], true)) erro(422, 'Escolha o tipo.');
+    $texto = trim(strip_tags((string)($in['texto'] ?? '')));
+    if (mb_strlen($texto) < 5) erro(422, 'Escreva um pouco mais.');
+    if (mb_strlen($texto) > 2000) erro(422, 'Texto muito longo (até 2000 letras).');
+    limite('sugestao:' . $u['id'], 10, 3600);
+    db()->prepare('INSERT INTO sugestoes (tenant_id, user_id, tipo, texto, created_at) VALUES (?,?,?,?,?)')->execute([$u['tenant_id'], $u['id'], $tipo, $texto, agora()]);
+    $para = variavel('PLATAFORMA_EMAIL');
+    $nomes = ['sugestao' => 'Sugestão', 'problema' => 'Problema', 'elogio' => 'Elogio'];
+    if ($para) enviar_email($para, '[Deu Fome] ' . $nomes[$tipo] . ' de ' . ($u['estabelecimento'] ?: $u['nome']), email_modelo($nomes[$tipo],
+        '<p style="white-space:pre-wrap">' . htmlspecialchars($texto) . '</p><p style="color:#66617A;font-size:13px">' . htmlspecialchars($u['nome'] . ' · ' . $u['email'] . ($u['estabelecimento'] ? ' · ' . $u['estabelecimento'] : '')) . '</p>', 'Ver sugestões', url_app() . '/admin#sugestoes'));
+    responder(['ok' => true], 201);
+}
+
+function r_plat_status(): never
+{
+    plataforma();
+    $st = db()->query("SELECT ultima_em, detalhe FROM tarefas WHERE nome = 'backup'");
+    $b = $st->fetch() ?: null;
+    $locais = [];
+    foreach (glob(DATA_DIR . '/backups/deufome-*.sqlite.zip') ?: [] as $f) $locais[] = ['nome' => basename($f), 'bytes' => filesize($f)];
+    rsort($locais);
+    responder([
+        'email' => email_configurado(), 'google' => google_configurado(), 'cadastro' => cadastro_aberto(), 'sem_volume' => SEM_VOLUME,
+        'backup' => $b ? ['quando' => $b['ultima_em'], 'info' => json_decode($b['detalhe'], true)] : null, 'backups' => $locais,
+        'erros_abertos' => (int)db()->query('SELECT COUNT(*) FROM erros WHERE resolvido = 0')->fetchColumn(),
+        'sugestoes_novas' => (int)db()->query('SELECT COUNT(*) FROM sugestoes WHERE lida = 0')->fetchColumn(),
+        'url' => url_app(),
+    ]);
+}
+
+function r_plat_backup_enviar(): never
+{
+    plataforma();
+    $info = fazer_backup(true);
+    if (!$info['email']) erro(409, email_configurado() ? 'O backup foi gerado, mas o e-mail falhou. Veja os logs do Railway.' : 'Backup gerado no volume. Para receber por e-mail, configure BREVO_API_KEY e EMAIL_REMETENTE.');
+    responder(['ok' => true] + $info);
+}
+
+function r_plat_erros(): never
+{
+    plataforma();
+    $st = db()->query('SELECT e.*, t.nome AS estabelecimento FROM erros e LEFT JOIN tenants t ON t.id = e.tenant_id ORDER BY e.resolvido, e.ultima_em DESC LIMIT 200');
+    responder(['erros' => $st->fetchAll()]);
+}
+
+function r_plat_erro_salvar(string $id): never
+{
+    plataforma();
+    $st = db()->prepare('UPDATE erros SET resolvido = ? WHERE id = ?');
+    $st->execute([empty(entrada()['resolvido']) ? 0 : 1, (int)$id]);
+    if (!$st->rowCount()) erro(404, 'Erro não encontrado.');
+    responder(['ok' => true]);
+}
+
+function r_plat_sugestoes(): never
+{
+    plataforma();
+    $st = db()->query('SELECT s.*, t.nome AS estabelecimento, u.nome AS autor, u.email FROM sugestoes s LEFT JOIN tenants t ON t.id = s.tenant_id LEFT JOIN users u ON u.id = s.user_id ORDER BY s.lida, s.id DESC LIMIT 300');
+    responder(['sugestoes' => $st->fetchAll()]);
+}
+
+function r_plat_sugestao_salvar(string $id): never
+{
+    plataforma();
+    $st = db()->prepare('UPDATE sugestoes SET lida = ? WHERE id = ?');
+    $st->execute([empty(entrada()['lida']) ? 0 : 1, (int)$id]);
+    if (!$st->rowCount()) erro(404, 'Sugestão não encontrada.');
+    responder(['ok' => true]);
 }

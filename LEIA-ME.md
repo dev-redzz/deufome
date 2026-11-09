@@ -1,4 +1,4 @@
-# Deu Fome — versão online (v1.0)
+# Deu Fome — versão online (v1.1)
 
 Plataforma de pedidos com um tablet fixo em cada mesa. Vários estabelecimentos usam o mesmo site, cada um com seus dados separados.
 
@@ -6,15 +6,18 @@ Plataforma de pedidos com um tablet fixo em cada mesa. Vários estabelecimentos 
 
 | Tela | Endereço | Quem usa |
 | --- | --- | --- |
+| Site de apresentação | `https://SEU-DOMINIO/` | Quem ainda não conhece o Deu Fome |
+| Criar conta | `https://SEU-DOMINIO/cadastro` | Restaurante que quer começar sozinho |
+| Termos e Privacidade | `/termos` e `/privacidade` | Todos |
 | Painel | `https://SEU-DOMINIO/admin` | Você (administrador), donos, gerentes e caixas |
 | Cozinha | `https://SEU-DOMINIO/cozinha` | Usuário com função Cozinha (TV ou tablet na cozinha) |
 | Tablet da mesa | `https://SEU-DOMINIO/tablet` | Tablets das mesas, ativados com código |
 
 ## Quem faz o quê
 
-- **Administrador do Deu Fome (você):** cadastra estabelecimentos, bloqueia e desbloqueia, baixa o backup.
-- **Dono / Gerente:** salão, mesas, tablets, cardápio completo (com fotos e adicionais), equipe e ajustes (nome e PIN).
-- **Caixa:** salão, chamados e fechamento de contas.
+- **Administrador do Deu Fome (você):** estabelecimentos, **Sistema** (backup, e-mail, Google), **Sugestões** recebidas e **Erros** registrados.
+- **Dono / Gerente:** salão, relatórios, fechamento de caixa, mesas, tablets, cardápio, equipe e ajustes (taxa de serviço, fuso, horário de funcionamento, PIN).
+- **Caixa:** salão, fechamento de contas (com divisão e troco) e fechamento de caixa.
 - **Cozinha:** só a tela da cozinha.
 
 ## Publicar no Railway (passo a passo)
@@ -56,6 +59,20 @@ No serviço, aba **Variables**, crie:
 | `PLATAFORMA_SENHA` | uma senha forte, com pelo menos 8 caracteres |
 | `PORT` | `8080` |
 
+Variáveis opcionais (cada uma liga uma função):
+
+| Variável | Para quê |
+| --- | --- |
+| `APP_URL` | Endereço do site, ex. `https://deu-fome-production.up.railway.app`. Usado nos links dos e-mails e no login com Google |
+| `BREVO_API_KEY` | Chave da Brevo para enviar e-mails (boas-vindas, esqueci minha senha, backup diário, alertas de erro) |
+| `EMAIL_REMETENTE` | E-mail que aparece como remetente; precisa estar validado na Brevo |
+| `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` | Liga o botão **Entrar com Google** |
+| `CADASTRO_ABERTO` | `0` desliga o "Criar conta grátis" (aí só você cadastra restaurantes) |
+| `EMPRESA_NOME` | Seu nome ou empresa, mostrado nos Termos, na Privacidade e no rodapé |
+| `EMAIL_CONTATO` | E-mail de contato e do encarregado de dados (LGPD) |
+| `FORO` | Cidade do foro nos Termos (padrão: Codó/MA) |
+| `DATA_TERMOS` | Data da última atualização dos Termos (padrão: 9 de novembro de 2026) |
+
 O administrador é criado no primeiro acesso. Trocar a variável depois **não** troca a senha: use **Minha senha** dentro do painel.
 
 **Não consegue entrar?** Abra `https://SEU-DOMINIO/saude`. Os campos mostram se o e-mail foi lido (`variavel_email`), se a senha tem 8 caracteres ou mais (`variavel_senha_ok`), se o administrador já existe (`administrador_criado`) e se o volume está ligado (`volume`). Para forçar a senha das variáveis, crie `PLATAFORMA_REDEFINIR` = `1`, publique, entre, e depois apague essa variável.
@@ -72,6 +89,25 @@ Para conferir: abra `https://SEU-DOMINIO/saude`. Deve aparecer `{"ok":true,...}`
 2. **Novo estabelecimento:** nome, responsável, e-mail, senha inicial, PIN dos tablets e quantidade de mesas.
 3. Envie ao responsável o endereço `/admin`, o e-mail e a senha. Ele monta o cardápio, cadastra a equipe e os tablets.
 
+### Configurar o e-mail (Brevo)
+
+1. Crie uma conta grátis em brevo.com (300 e-mails por dia).
+2. **Senders, Domains & Dedicated IPs → Senders:** adicione e valide o e-mail remetente.
+3. **SMTP & API → API Keys:** gere uma chave e coloque em `BREVO_API_KEY`. O remetente validado vai em `EMAIL_REMETENTE`.
+4. No painel, aba **Sistema**, use **Enviar por e-mail agora** (em Backup) para testar.
+
+Sem a Brevo o sistema funciona normalmente, só não envia e-mails (o "Esqueci minha senha" fica sem efeito).
+
+### Configurar o login com Google
+
+1. Em console.cloud.google.com crie um projeto.
+2. **APIs e serviços → Tela de permissão OAuth:** tipo **Externo**, nome "Deu Fome", seu e-mail, e os links `https://SEU-DOMINIO/privacidade` e `https://SEU-DOMINIO/termos`. Escopos: `openid`, `email` e `profile`. Clique em **Publicar app**.
+3. **Credenciais → Criar credenciais → ID do cliente OAuth → Aplicativo da Web.**
+4. Em **URIs de redirecionamento autorizados** coloque exatamente: `https://SEU-DOMINIO/auth/google/retorno`
+5. Copie o ID e a chave secreta para `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`, e preencha `APP_URL`.
+
+Quem entra com o Google pela primeira vez completa o cadastro do restaurante. Quem já tem conta com o mesmo e-mail entra direto e a conta fica ligada ao Google.
+
 ### 7. Configurar cada tablet
 
 1. No painel do estabelecimento: **Dispositivos → Cadastrar tablet**, escolha a mesa e anote o código.
@@ -83,9 +119,23 @@ Para conferir: abra `https://SEU-DOMINIO/saude`. Deve aparecer `{"ok":true,...}`
 
 Faça as mudanças, depois `git add . && git commit -m "..." && git push`. O Railway publica sozinho. Os tablets se atualizam sozinhos quando estão na tela inicial, sem ninguém precisar mexer neles.
 
+## Funções da versão 1.1
+
+- **Site de apresentação** em `/`, com **Termos de uso** e **Política de privacidade** (LGPD). Revise os textos antes de divulgar.
+- **Criar conta sozinho**, **Entrar com Google** e **Esqueci minha senha** (link por e-mail, vale 1 hora).
+- **Abertura animada** com o logo e **tema escuro** no painel (botão no rodapé do menu).
+- **Relatórios:** faturamento, ticket médio, vendas por dia, movimento por hora, mais vendidos, formas de pagamento, mesas e avaliações, por período.
+- **Fechamento de caixa** do dia, por forma de pagamento, com impressão.
+- **Taxa de serviço** (liga e desliga na comanda), **dividir a conta** entre pessoas e várias formas de pagamento, com **troco** no dinheiro.
+- **Imprimir** a conta no caixa e a comanda na cozinha (impressora térmica 80 mm), uma a uma ou automática.
+- **Avaliação do cliente** no tablet: estrelas, marcadores e comentário.
+- **Horário de funcionamento:** fora do horário o tablet mostra o cardápio, mas não aceita pedidos.
+- **Botão Sugestão** no painel, que chega para você por e-mail e na aba **Sugestões**.
+- **Erros** do servidor e dos navegadores ficam registrados; erros novos chegam por e-mail.
+
 ## Backup
 
-No painel do administrador, **Baixar backup** gera uma cópia completa do banco (arquivo `.sqlite`). Faça isso com frequência e guarde fora do Railway. As fotos ficam na pasta `uploads` do volume.
+Todo dia o sistema faz sozinho uma cópia do banco e envia em `.zip` para o `PLATAFORMA_EMAIL` (precisa da Brevo). As últimas 7 cópias ficam no volume, na pasta `backups`. Na aba **Sistema** você também pode **Baixar agora** ou **Enviar por e-mail agora**. As fotos ficam na pasta `uploads` do volume.
 
 ## Testar no seu computador
 
@@ -101,7 +151,9 @@ Testes automáticos, com o servidor rodando com `DEMO=1` e as variáveis do admi
 python testes/testar_api.py http://localhost:8000 SEU_EMAIL_ADMIN SUA_SENHA_ADMIN
 ```
 
-São 108 verificações: isolamento entre estabelecimentos, funções da equipe, tablets, sessões de mesa, cardápio, fotos, limites de login, bloqueio e pedidos simultâneos.
+São 170 verificações: isolamento entre estabelecimentos, funções da equipe, tablets, sessões de mesa, cardápio, fotos, limites de login, bloqueio, pedidos simultâneos, cadastro, Google, recuperação de senha, relatórios, caixa, taxa, divisão da conta, avaliações, horário, sugestões, erros e backup.
+
+Para o teste completo (Google e e-mails), rode o servidor também com `EMAIL_LOG=1`, `GOOGLE_CLIENT_ID=teste-cliente`, `GOOGLE_CLIENT_SECRET=segredo`, `GOOGLE_AUTH_URL=http://127.0.0.1:8301/auth` e `GOOGLE_TOKEN_URL=http://127.0.0.1:8301/token`, e passe mais dois argumentos: a pasta de dados e `8301`. Com `EMAIL_LOG=1`, os e-mails são gravados em `data/emails.log` em vez de enviados: útil para testar o "Esqueci minha senha" no computador.
 
 ## Como está montado
 
@@ -113,9 +165,12 @@ São 108 verificações: isolamento entre estabelecimentos, funções da equipe,
 ```
 app/config.php   caminhos e variáveis de ambiente
 app/db.php       banco, migrações e dados de demonstração
-app/api.php      toda a API
+app/api.php      API do tablet, cozinha, salão e cadastros
+app/contas.php   criar conta, Google e recuperação de senha
+app/relatorios.php relatórios e fechamento de caixa
+app/servicos.php e-mail, backup, erros, horários e tarefas diárias
 app/router.php   páginas, arquivos, fotos e /saude
-public/          telas (admin, cozinha, tablet), CSS, JS, imagens e fontes
+public/          site, termos, privacidade, telas (admin, cozinha, tablet), CSS, JS, imagens e fontes
 Dockerfile       imagem usada pelo Railway
 railway.json     teste de saúde e reinício automático
 ```

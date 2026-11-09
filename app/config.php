@@ -14,7 +14,7 @@ function versao_app(): string
 {
     static $v = null;
     if ($v !== null) return $v;
-    $arquivos = ['public/css/deufome.css', 'public/js/comum.js', 'public/js/tablet.js', 'public/js/admin.js', 'public/js/cozinha.js', 'public/tablet.html'];
+    $arquivos = ['public/css/deufome.css', 'public/css/site.css', 'public/index.html', 'public/js/comum.js', 'public/js/tablet.js', 'public/js/admin.js', 'public/js/cozinha.js', 'public/tablet.html'];
     $base = '';
     foreach ($arquivos as $a) $base .= @filemtime(RAIZ . '/' . $a) . @filesize(RAIZ . '/' . $a);
     return $v = substr(md5($base), 0, 10);

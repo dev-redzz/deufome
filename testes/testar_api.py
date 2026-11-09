@@ -13,6 +13,8 @@ import uuid
 BASE = sys.argv[1] if len(sys.argv) > 1 else "http://localhost:8000"
 PLAT_EMAIL = sys.argv[2] if len(sys.argv) > 2 else ""
 PLAT_SENHA = sys.argv[3] if len(sys.argv) > 3 else ""
+DADOS = sys.argv[4] if len(sys.argv) > 4 else ""
+GOOGLE_MOCK = int(sys.argv[5]) if len(sys.argv) > 5 else 0
 ok = falhas = 0
 
 
@@ -301,6 +303,190 @@ with concurrent.futures.ThreadPoolExecutor(12) as ex:
     res = list(ex.map(pedir, range(24)))
 _, est = req(T, "GET", "/api/tablet/estado", token=tokens_lote)
 checar("24 pedidos simultâneos, todos aceitos numa só comanda", all(c == 201 for c in res) and len(est["pedidos"]) == 24, res)
+
+
+import os, time, base64, threading, re as _re
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import urlparse, parse_qs, quote
+
+class SemRedirecionar(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **k):
+        return None
+
+def cliente_sem_redir():
+    jar = http.cookiejar.CookieJar()
+    return urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar), SemRedirecionar)
+
+def ir(op, caminho):
+    try:
+        with op.open(BASE + caminho) as r:
+            return r.status, r.headers.get("Location", "")
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers.get("Location", "")
+
+def emails():
+    if not DADOS: return []
+    try:
+        return [json.loads(l) for l in open(os.path.join(DADOS, "emails.log"), encoding="utf-8") if l.strip()]
+    except FileNotFoundError:
+        return []
+
+print("Cadastro livre")
+N = cliente()
+base_cad = {"restaurante": "Lanchonete Teste", "nome": "Joana", "email": "joana@lanchonete.com", "senha": "senha-joana-1", "pin": "1111", "mesas": 3}
+checar("cadastro sem aceitar termos é recusado", req(N, "POST", "/api/cadastro", base_cad)[0] == 422)
+checar("PIN inválido é recusado", req(N, "POST", "/api/cadastro", {**base_cad, "pin": "12", "aceite": True})[0] == 422)
+s, r = req(N, "POST", "/api/cadastro", {**base_cad, "aceite": True})
+checar("restaurante se cadastra sozinho", s == 201, r)
+_, eu = req(N, "GET", "/api/me")
+checar("já entra logado como dono", eu.get("papel") == "dono" and eu.get("estabelecimento") == "Lanchonete Teste")
+checar("cria as mesas pedidas", len(req(N, "GET", "/api/mesas")[1]["mesas"]) == 3)
+checar("e-mail repetido no cadastro é recusado", req(cliente(), "POST", "/api/cadastro", {**base_cad, "aceite": True})[0] == 409)
+if DADOS:
+    checar("e-mail de boas-vindas enviado", any(e["para"] == "joana@lanchonete.com" and "Bem-vindo" in e["assunto"] for e in emails()))
+
+print("Esqueci minha senha")
+antes = len(emails())
+checar("pedido para e-mail inexistente responde igual", req(cliente(), "POST", "/api/senha/esqueci", {"email": "naoexiste@x.com"})[0] == 200)
+checar("pedido para e-mail real", req(cliente(), "POST", "/api/senha/esqueci", {"email": "joana@lanchonete.com"})[0] == 200)
+if DADOS:
+    novos = emails()[antes:]
+    checar("só o e-mail real recebe o link", len(novos) == 1 and novos[0]["para"] == "joana@lanchonete.com")
+    token = _re.search(r"#redefinir=([a-f0-9]{64})", novos[0]["html"]).group(1) if novos else ""
+    checar("senha curta na redefinição é recusada", req(cliente(), "POST", "/api/senha/redefinir", {"token": token, "senha": "123"})[0] == 422)
+    checar("redefine a senha com o link", req(cliente(), "POST", "/api/senha/redefinir", {"token": token, "senha": "senha-nova-joana"})[0] == 200)
+    checar("link não pode ser usado de novo", req(cliente(), "POST", "/api/senha/redefinir", {"token": token, "senha": "outra-senha-123"})[0] == 422)
+    checar("entra com a senha nova", req(cliente(), "POST", "/api/login", {"email": "joana@lanchonete.com", "senha": "senha-nova-joana"})[0] == 200)
+    checar("senha antiga não vale mais", req(cliente(), "POST", "/api/login", {"email": "joana@lanchonete.com", "senha": "senha-joana-1"})[0] == 422)
+
+if GOOGLE_MOCK:
+    print("Login com Google")
+    contas_google = {"novo": {"sub": "g-111", "email": "carlos@gmail.com", "name": "Carlos Souza"}, "existente": {"sub": "g-222", "email": "admin@cantinho.test", "name": "Gerente"}}
+    proxima = {"conta": None}
+    class Mock(BaseHTTPRequestHandler):
+        def log_message(self, *a): pass
+        def do_POST(self):
+            corpo = parse_qs(self.rfile.read(int(self.headers.get("Content-Length", 0))).decode())
+            c = contas_google[proxima["conta"]]
+            claims = {"iss": "https://accounts.google.com", "aud": corpo.get("client_id", [""])[0], "exp": int(time.time()) + 3600, "email_verified": True, **c}
+            b64 = lambda d: base64.urlsafe_b64encode(json.dumps(d).encode()).decode().rstrip("=")
+            dados = json.dumps({"id_token": b64({"alg": "RS256"}) + "." + b64(claims) + ".assinatura", "access_token": "x"}).encode()
+            self.send_response(200 if corpo.get("code", [""])[0] == "codigo-bom" else 400)
+            self.send_header("Content-Type", "application/json"); self.end_headers(); self.wfile.write(dados)
+    srv = HTTPServer(("127.0.0.1", GOOGLE_MOCK), Mock); threading.Thread(target=srv.serve_forever, daemon=True).start()
+    G = cliente_sem_redir()
+    s, loc = ir(G, "/auth/google?modo=cadastro")
+    state = parse_qs(urlparse(loc).query).get("state", [""])[0]
+    checar("redireciona para o Google com state", s == 302 and "client_id=teste-cliente" in loc and len(state) == 32)
+    checar("state errado é recusado", ir(G, "/auth/google/retorno?code=codigo-bom&state=errado")[1].endswith("#erro=google-sessao"))
+    s, loc = ir(G, "/auth/google?modo=cadastro"); state = parse_qs(urlparse(loc).query)["state"][0]
+    proxima["conta"] = "novo"
+    s, loc = ir(G, f"/auth/google/retorno?code=codigo-bom&state={state}")
+    checar("conta nova vai para completar o cadastro", s == 302 and loc.endswith("/cadastro#google"), loc)
+    _, pend = req(G, "GET", "/api/cadastro/google")
+    checar("cadastro recebe nome e e-mail do Google", pend.get("email") == "carlos@gmail.com" and pend.get("nome") == "Carlos Souza")
+    s, r = req(G, "POST", "/api/cadastro/google", {"nome": "Carlos", "restaurante": "Pastelaria do Carlos", "pin": "2222", "mesas": 2, "aceite": True})
+    checar("cria restaurante com Google", s == 201, r)
+    checar("entra como dono pelo Google", req(G, "GET", "/api/me")[1].get("email") == "carlos@gmail.com")
+    G2 = cliente_sem_redir()
+    s, loc = ir(G2, "/auth/google"); state = parse_qs(urlparse(loc).query)["state"][0]
+    proxima["conta"] = "existente"
+    s, loc = ir(G2, f"/auth/google/retorno?code=codigo-bom&state={state}")
+    checar("conta existente entra direto pelo Google", s == 302 and loc == "/admin" and req(G2, "GET", "/api/me")[1].get("email") == "admin@cantinho.test", loc)
+    G3 = cliente_sem_redir()
+    s, loc = ir(G3, "/auth/google"); state = parse_qs(urlparse(loc).query)["state"][0]
+    checar("código inválido não entra", ir(G3, f"/auth/google/retorno?code=codigo-ruim&state={state}")[1].endswith("#erro=google-falhou") and req(G3, "GET", "/api/me")[0] == 401)
+    srv.shutdown()
+
+print("Taxa de serviço, divisão e caixa")
+_, lm = req(A, "GET", "/api/mesas")
+m3 = next(m for m in lm["mesas"] if not m["ocupada"] and not m["tablet"])
+s, r = req(A, "POST", "/api/dispositivos", {"nome": "Tablet Conta", "mesa_id": m3["id"]})
+tc = req(T, "POST", "/api/tablet/ativar", {"codigo": r["ativacao"]["codigo"]})[1]["token"]
+req(A, "POST", "/api/config", {"taxa_servico": 10})
+req(T, "POST", "/api/tablet/pedidos", {"chave": str(uuid.uuid4()), "itens": [{"produto_id": burger["id"], "quantidade": 3}]}, token=tc)
+_, est = req(T, "GET", "/api/tablet/estado", token=tc)
+sub = est["total"]; taxa = round(sub * 0.10); total = sub + taxa
+checar("tablet recebe a taxa de serviço", est["taxa_servico"] == 10)
+sid = est["sessao"]["id"]
+checar("pagamentos que não somam o total são recusados", req(A, "POST", f"/api/salao/sessoes/{sid}/fechar", {"cobrar_taxa": True, "pessoas": 2, "pagamentos": [{"forma": "pix", "valor": 100}]})[0] == 422)
+checar("forma de pagamento inválida é recusada", req(A, "POST", f"/api/salao/sessoes/{sid}/fechar", {"cobrar_taxa": True, "pagamentos": [{"forma": "cheque", "valor": total}]})[0] == 422)
+print("Avaliação do cliente")
+checar("nota inválida é recusada", req(T, "POST", "/api/tablet/avaliar", {"nota": 7}, token=tc)[0] == 422)
+checar("cliente avalia", req(T, "POST", "/api/tablet/avaliar", {"nota": 5, "tags": ["Comida ótima", "tag inventada"], "comentario": "Muito bom!"}, token=tc)[0] == 201)
+checar("só uma avaliação por atendimento", req(T, "POST", "/api/tablet/avaliar", {"nota": 1}, token=tc)[0] == 409)
+checar("tablet sabe que já avaliou", req(T, "GET", "/api/tablet/estado", token=tc)[1]["avaliado"] is True)
+_, com = req(A, "GET", f"/api/salao/sessoes/{sid}")
+checar("comanda mostra a avaliação sem tags inventadas", com["avaliacao"]["nota"] == 5 and com["avaliacao"]["tags"] == ["Comida ótima"])
+metade = total // 2
+s, r = req(A, "POST", f"/api/salao/sessoes/{sid}/fechar", {"cobrar_taxa": True, "pessoas": 2, "pagamentos": [{"forma": "pix", "valor": metade}, {"forma": "dinheiro", "valor": total - metade}]})
+checar("fecha conta dividida com taxa de 10%", s == 200 and r["taxa"] == taxa and r["total"] == total, r)
+_, cx = req(C, "GET", "/api/caixa")
+pix = next(f for f in cx["formas"] if f["forma"] == "pix")["total"]; din = next(f for f in cx["formas"] if f["forma"] == "dinheiro")["total"]
+conta = next((c for c in cx["contas"] if len(c["pagamentos"]) == 2 and c["taxa"] == taxa), None)
+checar("caixa (função caixa) vê a conta dividida", conta is not None and conta["pessoas"] == 2)
+checar("caixa soma por forma de pagamento", pix >= metade and din >= total - metade)
+checar("cozinha não vê o caixa", req(K, "GET", "/api/caixa")[0] == 403)
+
+print("Relatórios")
+_, rel = req(A, "GET", "/api/relatorios?periodo=hoje")
+checar("relatório do dia tem as contas fechadas", rel["resumo"]["contas"] >= 3 and rel["resumo"]["faturado"] > 0)
+checar("relatório traz a avaliação", rel["avaliacoes"]["total"] >= 1 and rel["avaliacoes"]["media"] is not None)
+checar("relatório traz mais vendidos e horas", rel["produtos"] and len(rel["por_hora"]) == 24)
+_, rel30 = req(A, "GET", "/api/relatorios?periodo=30d")
+checar("30 dias têm 30 barras", len(rel30["por_dia"]) == 30)
+checar("período personalizado inválido é recusado", req(A, "GET", "/api/relatorios?periodo=personalizado&de=xx&ate=2026-01-01")[0] == 422)
+checar("caixa não vê relatórios", req(C, "GET", "/api/relatorios")[0] == 403)
+checar("relatório de outro restaurante vem vazio", req(N, "GET", "/api/relatorios?periodo=30d")[1]["resumo"]["contas"] == 0)
+
+print("Tempo de preparo")
+req(T, "POST", "/api/tablet/pedidos", {"chave": str(uuid.uuid4()), "itens": [{"produto_id": burger["id"], "quantidade": 1}]}, token=tc)
+pid = max(p["id"] for p in req(K, "GET", "/api/cozinha/pedidos")[1]["pedidos"])
+req(K, "POST", f"/api/cozinha/pedidos/{pid}/status", {"status": "preparo"}); req(K, "POST", f"/api/cozinha/pedidos/{pid}/status", {"status": "pronto"})
+checar("tempo de preparo é calculado", req(A, "GET", "/api/relatorios?periodo=hoje")[1]["resumo"]["preparo_min"] is not None)
+
+print("Horário de funcionamento")
+from datetime import datetime, timedelta, timezone
+agora_sp = datetime.now(timezone(timedelta(hours=-3)))
+fora = [(agora_sp + timedelta(hours=2)).strftime("%H:00"), (agora_sp + timedelta(hours=3)).strftime("%H:00")]
+dentro = [(agora_sp - timedelta(hours=1)).strftime("%H:%M"), (agora_sp + timedelta(hours=1)).strftime("%H:%M")]
+checar("horário inválido é recusado", req(A, "POST", "/api/config", {"horarios": {"ativo": True, "dias": {"0": [["25:00", "26:00"]]}}})[0] == 422)
+s, r = req(A, "POST", "/api/config", {"horarios": {"ativo": True, "dias": {str(d): [fora] for d in range(7)}}})
+checar("salva horário e mostra fechado agora", s == 200 and r["situacao"]["aberto"] is False and r["situacao"]["proxima"], r)
+_, est = req(T, "GET", "/api/tablet/estado", token=tc)
+checar("tablet sabe que está fechado", est["horario"]["aberto"] is False)
+s, r = req(T, "POST", "/api/tablet/pedidos", {"chave": str(uuid.uuid4()), "itens": [{"produto_id": burger["id"], "quantidade": 1}]}, token=tc)
+checar("pedido fora do horário é recusado", s == 409 and "fechados" in r["erro"])
+req(A, "POST", "/api/config", {"horarios": {"ativo": True, "dias": {str(d): [dentro] for d in range(7)}}})
+checar("dentro do horário volta a aceitar", req(T, "POST", "/api/tablet/pedidos", {"chave": str(uuid.uuid4()), "itens": [{"produto_id": burger["id"], "quantidade": 1}]}, token=tc)[0] == 201)
+req(A, "POST", "/api/config", {"horarios": {"ativo": False, "dias": {}}})
+checar("sem controle de horário aceita sempre", req(T, "GET", "/api/tablet/estado", token=tc)[1]["horario"]["controle"] is False)
+checar("taxa acima de 30% é recusada", req(A, "POST", "/api/config", {"taxa_servico": 50})[0] == 422)
+checar("fuso inválido é recusado", req(A, "POST", "/api/config", {"fuso": "Marte/Base"})[0] == 422)
+
+print("Sugestões, erros e backup")
+checar("sugestão curta é recusada", req(A, "POST", "/api/sugestoes", {"tipo": "sugestao", "texto": "oi"})[0] == 422)
+checar("envia sugestão", req(A, "POST", "/api/sugestoes", {"tipo": "problema", "texto": "A impressora cortou a comanda."})[0] == 201)
+checar("navegador reporta erro", req(cliente(), "POST", "/api/erros", {"mensagem": "TypeError: x is undefined", "detalhe": "at tablet.js:10", "url": "/tablet"})[0] == 200)
+req(cliente(), "POST", "/api/erros", {"mensagem": "TypeError: x is undefined", "detalhe": "at tablet.js:10", "url": "/tablet"})
+if PLAT_EMAIL:
+    P2 = cliente(); req(P2, "POST", "/api/login", {"email": PLAT_EMAIL, "senha": PLAT_SENHA})
+    _, sg = req(P2, "GET", "/api/plataforma/sugestoes")
+    sug = next(x for x in sg["sugestoes"] if "impressora" in x["texto"])
+    checar("plataforma recebe a sugestão com o restaurante", sug["estabelecimento"] == "Cantinho Deu Fome" and sug["lida"] == 0)
+    checar("marca sugestão como lida", req(P2, "POST", f"/api/plataforma/sugestoes/{sug['id']}", {"lida": True})[0] == 200)
+    _, er = req(P2, "GET", "/api/plataforma/erros")
+    e1 = next(x for x in er["erros"] if "x is undefined" in x["mensagem"])
+    checar("erro repetido é agrupado", e1["contagem"] == 2 and e1["origem"] == "navegador")
+    checar("marca erro como resolvido", req(P2, "POST", f"/api/plataforma/erros/{e1['id']}", {"resolvido": True})[0] == 200)
+    _, st = req(P2, "GET", "/api/plataforma/status")
+    checar("status mostra o backup automático", st["backup"] is not None and st["backups"])
+    s, r = req(P2, "POST", "/api/plataforma/backup/enviar")
+    checar("envia backup por e-mail", s == 200 and r["email"] is True, r)
+    if DADOS:
+        bk = [e for e in emails() if "Backup" in e["assunto"]]
+        checar("e-mail de backup tem o arquivo .zip", bk and bk[-1]["anexos"][0]["nome"].endswith(".sqlite.zip") and bk[-1]["anexos"][0]["bytes"] > 1000)
+    checar("restaurante não acessa a área da plataforma", req(A, "GET", "/api/plataforma/erros")[0] == 403)
 
 print(f"\n{ok} ok, {falhas} falha(s)")
 sys.exit(1 if falhas else 0)

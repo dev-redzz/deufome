@@ -16,6 +16,15 @@ const DF = (() => {
     conta: '<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>',
     sacola: '<path d="M5 8h14l-1 12H6z"/><path d="M9 8V6a3 3 0 0 1 6 0v2"/>',
     relogio: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+    grafico: '<path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/>',
+    caixa: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18M7 15h3"/>',
+    impressora: '<path d="M7 9V3h10v6M7 17H5a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="7" y="14" width="10" height="7" rx="1"/>',
+    estrela: '<path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.8-5.2 2.8 1-5.8L3.5 9.7l5.9-.9z"/>',
+    lua: '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
+    sol: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
+    balao: '<path d="M4 5h16v11H9l-5 4z"/>',
+    alerta: '<path d="M12 3l10 18H2z"/><path d="M12 10v4M12 17.5v.5"/>',
+    loja: '<path d="M3 9l1.5-5h15L21 9M3 9v11h18V9M3 9h18M9 20v-6h6v6"/>',
     chef: '<path d="M7 14.5V20h10v-5.5"/><path d="M7 14.5a4 4 0 1 1 1.2-7.8A4 4 0 0 1 15.8 6.7 4 4 0 1 1 17 14.5z"/>',
     tablet: '<rect x="5" y="3" width="14" height="18" rx="3"/><path d="M10.5 18h3"/>',
     mesa: '<path d="M3 9h18M5 9v10M19 9v10M8 9l1-4h6l1 4"/>',
@@ -68,5 +77,28 @@ const DF = (() => {
     return { el: f.firstElementChild, fechar };
   }
 
-  return { icone, real, esc, uid, toast, api, modal, segundosDesde, tempo };
+  let errosEnviados = 0;
+  function reportarErro(mensagem, detalhe) {
+    if (errosEnviados++ >= 5 || !mensagem) return;
+    try {
+      fetch('/api/erros', { method: 'POST', headers: { 'Content-Type': 'application/json' }, keepalive: true,
+        body: JSON.stringify({ mensagem: String(mensagem).slice(0, 500), detalhe: String(detalhe || '').slice(0, 3000), url: location.pathname + ' · ' + navigator.userAgent.slice(0, 120) }) }).catch(() => {});
+    } catch {}
+  }
+  window.addEventListener('error', e => reportarErro(e.message, e.error?.stack || `${e.filename}:${e.lineno}:${e.colno}`));
+  window.addEventListener('unhandledrejection', e => { const r = e.reason; if (r && (r.status || r.offline)) return; reportarErro(r?.message || String(r), r?.stack); });
+
+  function imprimir(html) {
+    let area = document.getElementById('area-impressao');
+    if (!area) { area = document.createElement('div'); area.id = 'area-impressao'; document.body.appendChild(area); }
+    area.innerHTML = html;
+    document.body.classList.add('imprimindo');
+    const fim = () => { document.body.classList.remove('imprimindo'); area.innerHTML = ''; window.removeEventListener('afterprint', fim); };
+    window.addEventListener('afterprint', fim);
+    setTimeout(() => { window.print(); setTimeout(fim, 1500); }, 60);
+  }
+
+  const dataHora = utc => new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+
+  return { icone, real, esc, uid, toast, api, modal, segundosDesde, tempo, imprimir, dataHora };
 })();

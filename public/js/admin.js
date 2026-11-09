@@ -1,5 +1,6 @@
 (() => {
-  const { icone, real, esc, toast, api, modal, segundosDesde, tempo } = DF;
+  const { icone, real, esc, toast, api, modal, segundosDesde, tempo, imprimir, dataHora } = DF;
+  let info = { google: false, cadastro: false, demo: false };
   const raiz = document.getElementById('raiz');
   let eu = null, aba = null, timer = null;
 
@@ -10,8 +11,13 @@
     cozinha: ['Cozinha', 'Só a tela da cozinha'],
   };
   const ABAS = {
-    estabelecimentos: ['Estabelecimentos', 'mesa', () => estabelecimentos()],
+    estabelecimentos: ['Estabelecimentos', 'loja', () => estabelecimentos()],
+    sistema: ['Sistema e backup', 'cadeado', () => sistema()],
+    sugestoes: ['Sugestões', 'balao', () => sugestoesPg()],
+    erros: ['Erros', 'alerta', () => errosPg()],
     salao: ['Salão e contas', 'mesa', s => salao(s)],
+    relatorios: ['Relatórios', 'grafico', () => relatorios()],
+    caixa: ['Fechamento de caixa', 'caixa', () => caixaPg()],
     mesas: ['Mesas', 'mesa', () => mesas()],
     dispositivos: ['Dispositivos', 'tablet', s => dispositivos(s)],
     cardapio: ['Cardápio', 'cardapio', () => cardapio()],
@@ -20,11 +26,12 @@
     conta: ['Minha senha', 'cadeado', () => ajustes()],
   };
   const ABAS_POR_PAPEL = {
-    plataforma: ['estabelecimentos', 'conta'],
-    dono: ['salao', 'mesas', 'dispositivos', 'cardapio', 'equipe', 'ajustes'],
-    gerente: ['salao', 'mesas', 'dispositivos', 'cardapio', 'equipe', 'ajustes'],
-    caixa: ['salao', 'conta'],
+    plataforma: ['estabelecimentos', 'sistema', 'sugestoes', 'erros', 'conta'],
+    dono: ['salao', 'relatorios', 'caixa', 'mesas', 'dispositivos', 'cardapio', 'equipe', 'ajustes'],
+    gerente: ['salao', 'relatorios', 'caixa', 'mesas', 'dispositivos', 'cardapio', 'equipe', 'ajustes'],
+    caixa: ['salao', 'caixa', 'conta'],
   };
+  const FORMAS = { pix: 'Pix', dinheiro: 'Dinheiro', credito: 'Crédito', debito: 'Débito', dividido: 'Dividido' };
   const AO_VIVO = ['salao', 'dispositivos'];
 
   const paraCentavos = v => {
@@ -35,29 +42,145 @@
   const main = () => raiz.querySelector('#main');
   const falhou = er => { if (er.status === 401) return telaLogin(); toast(er.message, 'erro'); };
 
-  /* ------------------------------------------------------------ LOGIN */
-  async function telaLogin() {
+  /* ------------------------------------------------------------ ACESSO */
+  const ERROS_HASH = {
+    'google-off': 'O login com Google ainda não foi configurado.',
+    'google-cancelado': 'Você cancelou o login com Google.',
+    'google-sessao': 'A confirmação do Google expirou. Tente de novo.',
+    'google-falhou': 'Não foi possível entrar com o Google. Tente de novo.',
+    'sem-conta': 'Não encontramos uma conta com este e-mail do Google.',
+    'desativado': 'Seu acesso foi desativado. Fale com o responsável pelo restaurante.',
+    'bloqueado': 'Este estabelecimento está bloqueado. Fale com o suporte do Deu Fome.',
+  };
+
+  function aplicarTema(t) {
+    document.documentElement.dataset.tema = t;
+    try { localStorage.setItem('deufome_tema', t); } catch {}
+  }
+  try { const t = localStorage.getItem('deufome_tema'); if (t === 'escuro') document.documentElement.dataset.tema = 'escuro'; } catch {}
+
+  function abertura() {
+    try { if (sessionStorage.getItem('deufome_abertura')) return; sessionStorage.setItem('deufome_abertura', '1'); } catch { return; }
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const a = document.createElement('div');
+    a.className = 'abertura';
+    a.innerHTML = '<div class="peca"><img src="/img/icone-escuro.png" alt=""><b>Deu<span>Fome</span></b></div>';
+    a.onclick = () => a.remove();
+    a.addEventListener('animationend', e => { if (e.animationName === 'abertura-sai') a.remove(); });
+    document.body.appendChild(a);
+  }
+
+  function telaAcesso(conteudo, { titulo = 'Cada mesa com seu próprio cardápio.', texto = 'Acompanhe o salão, a cozinha e os tablets das mesas em um só lugar.' } = {}) {
     clearInterval(timer);
-    let demo = false;
-    try { demo = (await api('/api/info')).demo; } catch {}
     raiz.innerHTML = `<div class="login">
-      <div class="lado"><img src="/img/icone-escuro.png" alt=""><h1>Cada mesa com seu próprio cardápio.</h1><p>Acompanhe o salão, a cozinha e os tablets das mesas em um só lugar.</p></div>
-      <div class="formulario"><form id="f">
-        <img src="/img/logo.png" alt="Deu Fome" style="height:60px;margin:0 auto 4px">
-        <h2>Entrar no painel</h2>
-        <label class="campo">E-mail<input name="email" type="email" required autocomplete="username"></label>
-        <label class="campo">Senha<input name="senha" type="password" required autocomplete="current-password"></label>
-        <button class="btn btn-azul" style="height:54px">Entrar</button>
-        ${demo ? '<div class="dica"><b>Modo demonstração</b><br>admin@cantinho.test, senha 123456, PIN do tablet 1234<br>Cozinha: cozinha@cantinho.test · Caixa: caixa@cantinho.test</div>' : ''}
-      </form></div>
+      <div class="lado"><a class="voltar-inicio" href="/">← Deu Fome</a><img src="/img/icone-escuro.png" alt=""><h1>${titulo}</h1><p>${texto}</p></div>
+      <div class="formulario">${conteudo}</div>
     </div>`;
-    raiz.querySelector('#f').onsubmit = async e => {
+    return raiz.querySelector('form');
+  }
+
+  const botaoGoogle = (modo, texto) => info.google ? `<a class="btn btn-google" href="/auth/google?modo=${modo}">${texto}</a><div class="ou">ou</div>` : '';
+
+  function telaLogin(msg) {
+    const erroHash = (location.hash.match(/^#erro=([a-z-]+)/) || [])[1];
+    if (erroHash) { msg = { tipo: 'erro', texto: ERROS_HASH[erroHash] || 'Não foi possível entrar.' }; history.replaceState(null, '', '/admin'); }
+    const f = telaAcesso(`<form id="f">
+      <img src="/img/logo.png" alt="Deu Fome" style="height:60px;margin:0 auto 4px">
+      <h2>Entrar no painel</h2>
+      ${msg ? `<div class="aviso-form ${msg.tipo}">${esc(msg.texto)}</div>` : ''}
+      ${botaoGoogle('entrar', 'Entrar com Google')}
+      <label class="campo">E-mail<input name="email" type="email" required autocomplete="username"></label>
+      <label class="campo">Senha<input name="senha" type="password" required autocomplete="current-password"></label>
+      <button class="btn btn-azul" style="height:54px">Entrar</button>
+      <div class="links"><button type="button" class="link" id="esqueci">Esqueci minha senha</button>${info.cadastro ? '<a href="/cadastro">Criar conta grátis</a>' : ''}</div>
+      ${info.demo ? '<div class="dica"><b>Modo demonstração</b><br>admin@cantinho.test, senha 123456, PIN do tablet 1234<br>Cozinha: cozinha@cantinho.test · Caixa: caixa@cantinho.test</div>' : ''}
+    </form>`);
+    f.querySelector('#esqueci').onclick = () => telaEsqueci(f.email.value);
+    f.onsubmit = async e => {
       e.preventDefault();
-      const b = e.target.querySelector('button'); b.disabled = true;
+      const b = f.querySelector('button.btn-azul'); b.disabled = true;
       try {
-        const r = await api('/api/login', { metodo: 'POST', dados: Object.fromEntries(new FormData(e.target)) });
+        const r = await api('/api/login', { metodo: 'POST', dados: Object.fromEntries(new FormData(f)) });
         if (r.papel === 'cozinha' || new URLSearchParams(location.search).get('voltar') === '/cozinha') return location.href = '/cozinha';
         history.replaceState(null, '', '/admin');
+        iniciar();
+      } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
+    };
+  }
+
+  function telaEsqueci(email = '') {
+    const f = telaAcesso(`<form id="f">
+      <h2>Esqueci minha senha</h2>
+      <p class="sutil" style="margin:0">Digite o e-mail da sua conta. Vamos enviar um link para você criar uma senha nova.</p>
+      <label class="campo">E-mail<input name="email" type="email" required autocomplete="username" value="${esc(email)}"></label>
+      <button class="btn btn-azul" style="height:54px">Enviar link</button>
+      <div class="links"><button type="button" class="link" id="voltar">Voltar para o login</button></div>
+    </form>`);
+    f.querySelector('#voltar').onclick = () => telaLogin();
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const b = f.querySelector('.btn-azul'); b.disabled = true;
+      try {
+        await api('/api/senha/esqueci', { metodo: 'POST', dados: { email: f.email.value } });
+        telaLogin({ tipo: 'ok', texto: 'Se este e-mail tiver uma conta, você vai receber o link em alguns minutos. Veja também a caixa de spam.' });
+      } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
+    };
+  }
+
+  function telaRedefinir(token) {
+    const f = telaAcesso(`<form id="f">
+      <h2>Criar nova senha</h2>
+      <label class="campo">Nova senha<input name="senha" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
+      <label class="campo">Repita a nova senha<input name="senha2" type="password" required minlength="8" autocomplete="new-password"></label>
+      <button class="btn btn-azul" style="height:54px">Salvar nova senha</button>
+    </form>`);
+    f.onsubmit = async e => {
+      e.preventDefault();
+      if (f.senha.value !== f.senha2.value) return toast('As senhas não são iguais.', 'erro');
+      const b = f.querySelector('.btn-azul'); b.disabled = true;
+      try {
+        await api('/api/senha/redefinir', { metodo: 'POST', dados: { token, senha: f.senha.value } });
+        history.replaceState(null, '', '/admin');
+        telaLogin({ tipo: 'ok', texto: 'Senha alterada. Entre com a nova senha.' });
+      } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
+    };
+  }
+
+  const camposRestaurante = `
+    <label class="campo">Nome do restaurante<input name="restaurante" required maxlength="60" placeholder="Pizzaria do Centro"></label>
+    <div class="dupla"><label class="campo">Quantas mesas<input name="mesas" type="number" min="0" max="200" value="10"></label>
+    <label class="campo">PIN dos tablets<input name="pin" inputmode="numeric" maxlength="4" required placeholder="4 números"></label></div>
+    <label class="aceite"><input type="checkbox" name="aceite" required> <span>Li e aceito os <a href="/termos" target="_blank">Termos de uso</a> e a <a href="/privacidade" target="_blank">Política de privacidade</a>.</span></label>`;
+
+  async function telaCadastro() {
+    if (!info.cadastro) return telaLogin({ tipo: 'erro', texto: 'O cadastro de novos restaurantes está fechado no momento.' });
+    let pend = null;
+    if (location.hash === '#google') { try { pend = await api('/api/cadastro/google'); } catch {} }
+    const textos = { titulo: 'Seu restaurante pedindo pelo tablet hoje.', texto: 'Crie a conta, monte o cardápio e ative os tablets das mesas. Grátis durante o beta.' };
+    const f = telaAcesso(pend ? `<form id="f" class="largo">
+      <h2>Falta pouco</h2>
+      <div class="aviso-form ok">Conta Google confirmada: <b>${esc(pend.email)}</b></div>
+      <label class="campo">Seu nome<input name="nome" required maxlength="60" value="${esc(pend.nome || '')}"></label>
+      ${camposRestaurante}
+      <button class="btn btn-azul" style="height:54px">Criar restaurante</button>
+    </form>` : `<form id="f" class="largo">
+      <h2>Criar conta</h2>
+      ${botaoGoogle('cadastro', 'Cadastrar com Google')}
+      <div class="dupla"><label class="campo">Seu nome<input name="nome" required maxlength="60" autocomplete="name"></label>
+      <label class="campo">E-mail<input name="email" type="email" required autocomplete="email"></label></div>
+      <label class="campo">Senha<input name="senha" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
+      ${camposRestaurante}
+      <button class="btn btn-azul" style="height:54px">Criar conta</button>
+      <div class="links"><a href="/admin">Já tenho conta</a></div>
+    </form>`, textos);
+    f.onsubmit = async e => {
+      e.preventDefault();
+      const d = Object.fromEntries(new FormData(f));
+      if (!/^\d{4}$/.test(d.pin || '')) return toast('O PIN precisa ter 4 números.', 'erro');
+      const b = f.querySelector('.btn-azul'); b.disabled = true;
+      try {
+        await api(pend ? '/api/cadastro/google' : '/api/cadastro', { metodo: 'POST', dados: { ...d, mesas: Number(d.mesas || 0), aceite: !!d.aceite } });
+        history.replaceState(null, '', '/admin#cardapio');
         iniciar();
       } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
     };
@@ -68,19 +191,41 @@
     const abas = ABAS_POR_PAPEL[eu.papel] || [];
     raiz.innerHTML = `<div class="admin">
       <aside>
-        <div class="marca"><img src="/img/icone.png" alt=""><div><b>Deu Fome</b><small>${esc(eu.estabelecimento || 'Administração')}</small></div></div>
-        ${abas.map(a => `<button data-aba="${a}">${icone(ABAS[a][1], 20, 2)} ${ABAS[a][0]}</button>`).join('')}
+        <div class="marca"><img src="/img/icone.png" alt=""><div><b>Deu Fome</b><span class="beta">BETA</span><small>${esc(eu.estabelecimento || 'Administração')}</small></div></div>
+        ${abas.map(a => `<button data-aba="${a}">${icone(ABAS[a][1], 20, 2)} ${ABAS[a][0]}<span class="contador oculto" data-contador="${a}"></span></button>`).join('')}
         ${eu.papel !== 'plataforma' ? `<div class="grupo">Telas</div>
           <a href="/cozinha" target="_blank" rel="noopener">${icone('chef', 20, 2)} Abrir cozinha</a>
           <a href="/tablet" target="_blank" rel="noopener">${icone('tablet', 20, 2)} Abrir tablet</a>` : ''}
-        <div class="fim"><div class="quem">${esc(eu.nome)}<small>${esc(PAPEIS[eu.papel]?.[0] || 'Administrador do Deu Fome')}</small></div><button id="sair">${icone('sair', 20, 2)} Sair</button></div>
+        <div class="fim">
+          <div class="rodape-acoes">
+            <button id="tema" title="Tema claro ou escuro">${document.documentElement.dataset.tema === 'escuro' ? icone('sol', 18, 2) + ' Claro' : icone('lua', 18, 2) + ' Escuro'}</button>
+            ${eu.papel !== 'plataforma' ? `<button id="sugerir" title="Enviar sugestão">${icone('balao', 18, 2)} Sugestão</button>` : ''}
+          </div>
+          <div class="quem">${esc(eu.nome)}<small>${esc(PAPEIS[eu.papel]?.[0] || 'Administrador do Deu Fome')}</small></div><button id="sair">${icone('sair', 20, 2)} Sair</button></div>
       </aside>
       <main id="main"></main>
     </div>`;
     raiz.querySelector('aside').addEventListener('click', e => { const b = e.target.closest('[data-aba]'); if (b) mudarAba(b.dataset.aba); });
     raiz.querySelector('#sair').onclick = async () => { await api('/api/logout', { metodo: 'POST' }).catch(() => {}); location.href = '/admin'; };
+    raiz.querySelector('#tema').onclick = () => { aplicarTema(document.documentElement.dataset.tema === 'escuro' ? 'claro' : 'escuro'); layoutRodape(); };
+    raiz.querySelector('#sugerir')?.addEventListener('click', sugestaoModal);
     const hash = location.hash.slice(1);
     mudarAba(abas.includes(hash) ? hash : abas[0]);
+    if (eu.papel === 'plataforma') atualizarContadores();
+  }
+
+  function layoutRodape() {
+    const b = raiz.querySelector('#tema');
+    if (b) b.innerHTML = document.documentElement.dataset.tema === 'escuro' ? icone('sol', 18, 2) + ' Claro' : icone('lua', 18, 2) + ' Escuro';
+  }
+
+  async function atualizarContadores() {
+    try {
+      const st = await api('/api/plataforma/status');
+      const pinta = (aba, n) => { const c = raiz.querySelector(`[data-contador="${aba}"]`); if (c) { c.textContent = n; c.classList.toggle('oculto', !n); } };
+      pinta('erros', st.erros_abertos); pinta('sugestoes', st.sugestoes_novas);
+      return st;
+    } catch { return null; }
   }
 
   function mudarAba(a) {
@@ -180,48 +325,142 @@
     };
   }
 
+  function textoConta(r, extra = '') {
+    const s = r.sessao;
+    const linhas = r.pedidos.filter(p => p.status !== 'cancelado').flatMap(p => p.itens).map(i => `<div class="l"><span>${i.quantidade}x ${esc(i.nome)}</span><span>${real(i.subtotal)}</span></div>${i.adicionais.length ? `<div class="add">+ ${esc(i.adicionais.map(a => a.nome).join(', '))}</div>` : ''}`).join('');
+    return `<h1>${esc(r.estabelecimento)}</h1><div class="c">${esc(r.mesa || '')} · ${new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' })}</div><hr>${linhas}<hr>${extra}<div class="c" style="margin-top:3mm">Obrigado pela preferência!</div>`;
+  }
+
   async function abrirComanda(id) {
-    let forma = null;
+    let r = null, cobrarTaxa = true, pessoas = 1, pagamentos = [], recebido = {};
     const m = modal('<div class="comanda"><div class="corpo">Carregando…</div></div>', { aoFechar: () => aba === 'salao' && salao() });
-    async function pintar() {
-      let r;
+    const contas = () => {
+      const sub = r.total, taxa = cobrarTaxa && r.taxa_servico > 0 ? Math.round(sub * r.taxa_servico / 100) : 0;
+      return { sub, taxa, total: sub + taxa };
+    };
+    const lerPagamentos = () => {
+      m.el.querySelectorAll('.pagamento').forEach((l, i) => {
+        pagamentos[i].forma = l.querySelector('select').value;
+        pagamentos[i].valor = paraCentavos(l.querySelector('[data-valor]').value) ?? 0;
+        const rc = l.querySelector('[data-recebido]'); if (rc) recebido[i] = rc.value;
+      });
+    };
+    function pintarPagamentos() {
+      const { total } = contas();
+      const soma = pagamentos.reduce((a, p) => a + (p.valor || 0), 0);
+      const resta = total - soma;
+      const ok = resta === 0 && pagamentos.every(p => p.forma && p.valor > 0);
+      m.el.querySelector('#pagamentos').innerHTML = pagamentos.map((p, i) => {
+        const rc = paraCentavos(recebido[i] || '');
+        const troco = p.forma === 'dinheiro' && rc !== null && rc > p.valor ? rc - p.valor : null;
+        return `<div class="pagamento" data-i="${i}">
+          <select aria-label="Forma de pagamento"><option value="">Forma…</option>${['pix', 'dinheiro', 'credito', 'debito'].map(f => `<option value="${f}" ${p.forma === f ? 'selected' : ''}>${FORMAS[f]}</option>`).join('')}</select>
+          <input data-valor inputmode="decimal" value="${paraReais(p.valor || 0)}" aria-label="Valor">
+          <button class="btn btn-p btn-perigo" data-tirar-pg="${i}" ${pagamentos.length === 1 ? 'disabled' : ''} aria-label="Remover pagamento">${icone('lixo', 16)}</button>
+          ${p.forma === 'dinheiro' ? `<div class="troco">Recebido R$ <input data-recebido inputmode="decimal" value="${esc(recebido[i] || '')}" placeholder="0,00"><b data-troco>${troco !== null ? `Troco: ${real(troco)}` : ''}</b></div>` : ''}
+        </div>`;
+      }).join('');
+      m.el.querySelector('#restante').className = 'restante ' + (resta === 0 ? 'ok' : 'falta');
+      m.el.querySelector('#restante').textContent = resta === 0 ? 'Pagamentos conferem com o total.' : resta > 0 ? `Faltam ${real(resta)}` : `Passou ${real(-resta)} do total`;
+      m.el.querySelector('#fechar').disabled = !ok;
+    }
+    function pintarTotais() {
+      const { sub, taxa, total } = contas();
+      m.el.querySelector('#totais').innerHTML = `<div><span>Consumo</span><b>${real(sub)}</b></div>
+        ${r.taxa_servico > 0 ? `<div><label class="liga"><input type="checkbox" id="taxa" ${cobrarTaxa ? 'checked' : ''}> Taxa de serviço (${r.taxa_servico}%)</label><b>${real(taxa)}</b></div>` : ''}
+        <div class="grande"><span>Total</span><strong>${real(total)}</strong></div>
+        ${pessoas > 1 ? `<div class="sutil"><span>${pessoas} pessoas</span><b>${real(Math.ceil(total / pessoas))} cada</b></div>` : ''}`;
+    }
+    async function carregar() {
       try { r = await api(`/api/salao/sessoes/${id}`); } catch (er) { m.fechar(); return falhou(er); }
-      const s = r.sessao;
-      const aberta = s.status !== 'fechada';
+      const s = r.sessao, aberta = s.status !== 'fechada';
+      if (!aberta) cobrarTaxa = !!s.taxa;
+      pagamentos = [{ forma: '', valor: contas().total }];
+      const a = r.avaliacao;
       m.el.querySelector('.corpo').innerHTML = `
-        <div class="modal-cab"><h2>Comanda</h2><button class="btn btn-claro btn-p" data-fechar aria-label="Fechar">${icone('x', 18, 3)}</button></div>
+        <div class="modal-cab"><h2>Comanda · ${esc(r.mesa || '')}</h2><button class="btn btn-claro btn-p" data-fechar aria-label="Fechar">${icone('x', 18, 3)}</button></div>
         <p class="sutil" style="margin:6px 0 0">Aberta há ${tempo(segundosDesde(s.aberta_em))}${s.status === 'conta_solicitada' ? ' · <b style="color:var(--tomate)">conta solicitada</b>' : ''}</p>
+        ${a ? `<p style="margin:8px 0 0">${estrelas(a.nota)} ${a.tags.map(t => `<span class="chip cinza">${esc(t)}</span>`).join(' ')}${a.comentario ? `<br><i class="sutil">"${esc(a.comentario)}"</i>` : ''}</p>` : ''}
         ${r.pedidos.map(p => `<div class="pedido ${p.status === 'cancelado' ? 'cancelado' : ''}">
           <div class="cab"><b>Pedido ${p.numero}</b><span><span class="chip ${p.status === 'pronto' ? 'verde' : p.status === 'preparo' ? 'amarelo' : p.status === 'cancelado' ? 'vermelho' : 'cinza'}">${{ recebido: 'Recebido', preparo: 'Em preparo', pronto: 'Pronto', entregue: 'Entregue', cancelado: 'Cancelado' }[p.status]}</span>
           ${aberta && p.status !== 'cancelado' ? `<button class="btn btn-p btn-perigo" data-cancelar="${p.id}" style="margin-left:6px">Cancelar</button>` : ''}</span></div>
           ${p.itens.map(i => `<div class="it"><span>${i.quantidade}× ${esc(i.nome)}${i.adicionais.length ? ' (+ ' + esc(i.adicionais.map(a => a.nome).join(', ')) + ')' : ''}${i.observacao ? ' · ' + esc(i.observacao) : ''}</span><span>${real(i.subtotal)}</span></div>`).join('')}
         </div>`).join('') || '<p>Nenhum pedido.</p>'}
-        <div class="linha-total" style="margin-top:16px"><span>Total</span><strong>${real(r.total)}</strong></div>
-        ${aberta ? `<h3 style="margin-top:18px">Forma de pagamento</h3>
-          <div class="formas">${[['pix', 'Pix'], ['dinheiro', 'Dinheiro'], ['credito', 'Crédito'], ['debito', 'Débito']].map(([k, n]) => `<button data-forma="${k}" class="${forma === k ? 'marcada' : ''}">${n}</button>`).join('')}</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap">
-            ${s.status === 'conta_solicitada' ? '<button class="btn btn-borda" id="reabrir">Reabrir para novos pedidos</button>' : ''}
-            <button class="btn btn-sucesso" id="fechar" style="flex:1" ${forma ? '' : 'disabled'}>${icone('check', 20, 3)} Receber e liberar mesa</button>
-          </div>` : `<p class="chip verde" style="margin-top:12px">Fechada</p>`}`;
+        <div class="contas-linhas" id="totais"></div>
+        ${aberta ? `<div class="divisao">Dividir entre <input type="number" id="pessoas" min="1" max="50" value="${pessoas}" aria-label="Número de pessoas"> pessoas <button class="btn btn-p btn-borda" id="igual">Dividir igualmente</button></div>
+          <h3 style="margin-top:18px">Pagamentos</h3>
+          <div class="pagamentos" id="pagamentos"></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><button class="btn btn-p btn-borda" id="maisPg">${icone('mais', 16, 3)} Outro pagamento</button><span id="restante" class="restante"></span></div>
+          <div class="form-acoes">
+            <button class="btn btn-borda" id="preConta">${icone('impressora', 18, 2)} Imprimir conta</button>
+            ${s.status === 'conta_solicitada' ? '<button class="btn btn-borda" id="reabrir">Reabrir para pedidos</button>' : ''}
+            <span style="flex:1"></span>
+            <button class="btn btn-sucesso" id="fechar" disabled>${icone('check', 20, 3)} Receber e liberar mesa</button>
+          </div>` : `<div class="form-acoes"><span class="chip verde">Conta fechada</span><span style="flex:1"></span><button class="btn btn-borda" id="preConta">${icone('impressora', 18, 2)} Imprimir</button></div>`}`;
+      pintarTotais();
+      if (aberta) pintarPagamentos();
     }
+    m.el.addEventListener('input', e => {
+      if (e.target.id === 'pessoas') { pessoas = Math.max(1, Math.min(50, Number(e.target.value) || 1)); pintarTotais(); }
+      if (e.target.matches('[data-valor], [data-recebido]')) {
+        lerPagamentos();
+        m.el.querySelectorAll('.pagamento').forEach((l, i) => {
+          const t = l.querySelector('[data-troco]'); if (!t) return;
+          const rc = paraCentavos(recebido[i] || '');
+          t.textContent = rc !== null && rc > pagamentos[i].valor ? `Troco: ${real(rc - pagamentos[i].valor)}` : '';
+        });
+        const { total } = contas(), soma = pagamentos.reduce((a, p) => a + (p.valor || 0), 0);
+        const el = m.el.querySelector('#restante'); const resta = total - soma;
+        el.className = 'restante ' + (resta === 0 ? 'ok' : 'falta');
+        el.textContent = resta === 0 ? 'Pagamentos conferem com o total.' : resta > 0 ? `Faltam ${real(resta)}` : `Passou ${real(-resta)} do total`;
+        m.el.querySelector('#fechar').disabled = !(resta === 0 && pagamentos.every(p => p.forma && p.valor > 0));
+      }
+    });
+    m.el.addEventListener('change', e => {
+      if (e.target.id === 'taxa') { cobrarTaxa = e.target.checked; lerPagamentos(); if (pagamentos.length === 1) pagamentos[0].valor = contas().total; pintarTotais(); pintarPagamentos(); }
+      if (e.target.matches('.pagamento select') || e.target.matches('[data-valor], [data-recebido]')) { lerPagamentos(); pintarPagamentos(); }
+    });
     m.el.addEventListener('click', async e => {
       if (e.target.closest('[data-fechar]')) return m.fechar();
-      const f = e.target.closest('[data-forma]');
-      if (f) { forma = f.dataset.forma; return pintar(); }
+      if (e.target.closest('#igual')) {
+        lerPagamentos();
+        const { total } = contas(), parte = Math.floor(total / pessoas);
+        pagamentos = Array.from({ length: pessoas }, (_, i) => ({ forma: pagamentos[i]?.forma || '', valor: i === pessoas - 1 ? total - parte * (pessoas - 1) : parte }));
+        recebido = {};
+        return pintarPagamentos();
+      }
+      if (e.target.closest('#maisPg')) {
+        lerPagamentos();
+        const { total } = contas(), resta = Math.max(0, total - pagamentos.reduce((a, p) => a + p.valor, 0));
+        pagamentos.push({ forma: '', valor: resta });
+        return pintarPagamentos();
+      }
+      const tp = e.target.closest('[data-tirar-pg]');
+      if (tp) { lerPagamentos(); pagamentos.splice(Number(tp.dataset.tirarPg), 1); recebido = {}; return pintarPagamentos(); }
+      if (e.target.closest('#preConta')) {
+        const { sub, taxa, total } = contas();
+        return imprimir(textoConta(r, `<div class="l"><span>Consumo</span><span>${real(sub)}</span></div>${taxa ? `<div class="l"><span>Serviço ${r.taxa_servico}%</span><span>${real(taxa)}</span></div>` : ''}<div class="l g"><span>TOTAL</span><span>${real(total)}</span></div>${pessoas > 1 ? `<div class="l"><span>${pessoas} pessoas</span><span>${real(Math.ceil(total / pessoas))} cada</span></div>` : ''}`));
+      }
       const c = e.target.closest('[data-cancelar]');
       if (c) {
         const motivo = prompt('Motivo do cancelamento:');
         if (!motivo) return;
-        try { await api(`/api/salao/pedidos/${c.dataset.cancelar}/cancelar`, { metodo: 'POST', dados: { motivo } }); pintar(); } catch (er) { falhou(er); }
+        try { await api(`/api/salao/pedidos/${c.dataset.cancelar}/cancelar`, { metodo: 'POST', dados: { motivo } }); carregar(); } catch (er) { falhou(er); }
       }
-      if (e.target.closest('#reabrir')) { try { await api(`/api/salao/sessoes/${id}/reabrir`, { metodo: 'POST' }); pintar(); } catch (er) { falhou(er); } }
+      if (e.target.closest('#reabrir')) { try { await api(`/api/salao/sessoes/${id}/reabrir`, { metodo: 'POST' }); carregar(); } catch (er) { falhou(er); } }
       if (e.target.closest('#fechar')) {
-        try { const r = await api(`/api/salao/sessoes/${id}/fechar`, { metodo: 'POST', dados: { forma } }); toast(`Conta de ${real(r.total)} recebida. Mesa liberada.`); m.fechar(); }
-        catch (er) { falhou(er); }
+        lerPagamentos();
+        const b = e.target.closest('#fechar'); b.disabled = true;
+        try {
+          const res = await api(`/api/salao/sessoes/${id}/fechar`, { metodo: 'POST', dados: { cobrar_taxa: cobrarTaxa, pessoas, pagamentos } });
+          toast(`Conta de ${real(res.total)} recebida. Mesa liberada.`); m.fechar();
+        } catch (er) { falhou(er); b.disabled = false; }
       }
     });
-    pintar();
+    carregar();
   }
+
+  const estrelas = n => `<span class="estrelas" aria-label="${n} de 5 estrelas">${[1, 2, 3, 4, 5].map(i => `<span class="${i <= n ? '' : 'apagada'}">${icone('estrela', 16, 0).replace('fill="none"', 'fill="currentColor"')}</span>`).join('')}</span>`;
 
   /* ------------------------------------------------------------ MESAS */
   async function mesas() {
@@ -511,31 +750,250 @@
     const gestor = ['dono', 'gerente'].includes(eu.papel);
     let cfg = null;
     if (gestor) { try { cfg = await api('/api/config'); } catch (er) { return falhou(er); } }
+    const dias = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
+    const situacao = st => !st.controle ? '<span class="chip cinza">Sem controle de horário: aceita pedidos sempre</span>' : st.aberto ? '<span class="chip verde"><span class="ponto"></span>Aberto agora</span>' : `<span class="chip vermelho"><span class="ponto"></span>Fechado agora${st.proxima ? ', abre ' + esc(st.proxima) : ''}</span>`;
+    const turnoHtml = (d, t, i) => `<span class="turno"><input type="time" data-d="${d}" data-t="${i}" data-p="0" value="${t[0]}" aria-label="Início"> às <input type="time" data-d="${d}" data-t="${i}" data-p="1" value="${t[1]}" aria-label="Fim">${i > 0 ? `<button type="button" class="btn btn-p btn-perigo" data-tirar-turno="${d}" aria-label="Remover turno">${icone('x', 14, 3)}</button>` : ''}</span>`;
     main().innerHTML = cabecalho(gestor ? 'Ajustes' : 'Minha senha', '') + `<div class="cartoes">
       ${gestor ? `<form class="cartao" id="fEstab"><h3>Estabelecimento</h3>
         <label class="campo">Nome que aparece nos tablets<input name="nome" required maxlength="60" value="${esc(cfg.nome)}"></label>
         <label class="campo">Novo PIN dos tablets<input name="pin" inputmode="numeric" maxlength="4" placeholder="4 números, deixe em branco para manter"></label>
         <p class="sutil" style="margin:0">O PIN é pedido para sair do modo quiosque no tablet (5 toques no logo).</p>
-        <button class="btn btn-azul">Salvar</button></form>` : ''}
+        <div class="dupla"><label class="campo">Taxa de serviço (%)<input name="taxa_servico" type="number" min="0" max="30" value="${cfg.taxa_servico}"></label>
+        <label class="campo">Fuso horário<select name="fuso">${Object.entries(cfg.fusos).map(([k, v]) => `<option value="${k}" ${k === cfg.fuso ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label></div>
+        <p class="sutil" style="margin:0">Use 0 para não ter taxa. Ela é sugerida na comanda e o caixa pode tirar.</p>
+        <button class="btn btn-azul">Salvar</button></form>
+      <form class="cartao" id="fHorario" style="grid-column:1/-1"><h3>Horário de funcionamento</h3>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+          <label class="liga"><input type="checkbox" id="usarHorario" ${cfg.horarios.ativo ? 'checked' : ''}> Bloquear pedidos fora do horário</label>
+          <span id="situacao">${situacao(cfg.situacao)}</span></div>
+        <div class="horarios" id="dias">${dias.map((n, d) => { const ts = cfg.horarios.dias[d] || cfg.horarios.dias[String(d)] || []; return `<div class="horario-dia ${ts.length ? '' : 'fechado'}" data-dia="${d}">
+          <label class="liga"><input type="checkbox" data-aberto="${d}" ${ts.length ? 'checked' : ''}> ${n}</label>
+          <div class="turnos">${(ts.length ? ts : [['18:00', '23:00']]).map((t, i) => turnoHtml(d, t, i)).join('')}${ts.length < 2 ? `<button type="button" class="btn btn-p btn-borda" data-mais-turno="${d}">+ turno</button>` : ''}</div></div>`; }).join('')}</div>
+        <p class="sutil" style="margin:0">Turnos que passam da meia-noite também valem (ex.: 18:00 às 02:00). Fora do horário, o tablet mostra que o restaurante está fechado.</p>
+        <button class="btn btn-azul">Salvar horário</button></form>` : ''}
       <form class="cartao" id="fSenha"><h3>Minha senha</h3>
         <label class="campo">Senha atual<input name="atual" type="password" required autocomplete="current-password"></label>
         <label class="campo">Nova senha<input name="nova" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
+        <p class="sutil" style="margin:0">Se você entra com o Google e não sabe a senha atual, use "Esqueci minha senha" na tela de login.</p>
         <button class="btn btn-azul">Trocar senha</button></form>
     </div>`;
-    main().querySelector('#fEstab')?.addEventListener('submit', async e => {
+    const fE = main().querySelector('#fEstab');
+    fE?.addEventListener('submit', async e => {
       e.preventDefault();
-      const d = Object.fromEntries(new FormData(e.target));
+      const d = Object.fromEntries(new FormData(fE));
       if (d.pin && !/^\d{4}$/.test(d.pin)) return toast('O PIN precisa ter 4 números.', 'erro');
-      try { await api('/api/config', { metodo: 'POST', dados: d }); toast('Ajustes salvos.'); eu.estabelecimento = d.nome; raiz.querySelector('.marca small').textContent = d.nome; e.target.pin.value = ''; } catch (er) { falhou(er); }
+      try { await api('/api/config', { metodo: 'POST', dados: { ...d, taxa_servico: Number(d.taxa_servico) } }); toast('Ajustes salvos.'); eu.estabelecimento = d.nome; raiz.querySelector('.marca small').textContent = d.nome; fE.pin.value = ''; } catch (er) { falhou(er); }
     });
+    const fH = main().querySelector('#fHorario');
+    if (fH) {
+      const lerHorario = () => {
+        const dias = {};
+        fH.querySelectorAll('.horario-dia').forEach(l => {
+          const d = l.dataset.dia;
+          if (!l.querySelector('[data-aberto]').checked) { dias[d] = []; return; }
+          const turnos = [];
+          l.querySelectorAll('.turno').forEach(t => turnos.push([t.querySelector('[data-p="0"]').value, t.querySelector('[data-p="1"]').value]));
+          dias[d] = turnos;
+        });
+        return { ativo: fH.querySelector('#usarHorario').checked, dias };
+      };
+      fH.addEventListener('change', e => { const a = e.target.closest('[data-aberto]'); if (a) a.closest('.horario-dia').classList.toggle('fechado', !a.checked); });
+      fH.addEventListener('click', e => {
+        const mais = e.target.closest('[data-mais-turno]');
+        if (mais) { const d = mais.dataset.maisTurno; mais.insertAdjacentHTML('beforebegin', turnoHtml(d, ['11:00', '14:00'], 1)); mais.remove(); }
+        const tira = e.target.closest('[data-tirar-turno]');
+        if (tira) { const cont = tira.closest('.turnos'); tira.closest('.turno').remove(); cont.insertAdjacentHTML('beforeend', `<button type="button" class="btn btn-p btn-borda" data-mais-turno="${tira.dataset.tirarTurno}">+ turno</button>`); }
+      });
+      fH.addEventListener('submit', async e => {
+        e.preventDefault();
+        try { const r = await api('/api/config', { metodo: 'POST', dados: { horarios: lerHorario() } }); fH.querySelector('#situacao').innerHTML = situacao(r.situacao); toast('Horário salvo.'); } catch (er) { falhou(er); }
+      });
+    }
     main().querySelector('#fSenha').addEventListener('submit', async e => {
       e.preventDefault();
       try { await api('/api/minha-senha', { metodo: 'POST', dados: Object.fromEntries(new FormData(e.target)) }); toast('Senha trocada.'); e.target.reset(); } catch (er) { falhou(er); }
     });
   }
 
+  /* ------------------------------------------------------------ RELATÓRIOS */
+  let filtroRel = { periodo: '7d' };
+  const periodos = [['hoje', 'Hoje'], ['ontem', 'Ontem'], ['7d', '7 dias'], ['30d', '30 dias'], ['mes', 'Este mês']];
+
+  function graficoBarras(dados, { altura = 180, rotulo, valor, formatar, destaque }) {
+    const W = 640, H = altura, base = H - 26, topo = 18;
+    const max = Math.max(1, ...dados.map(valor));
+    const passo = W / Math.max(1, dados.length), larg = Math.max(4, Math.min(42, passo * 0.68));
+    const marcar = dados.length <= 16 ? 1 : Math.ceil(dados.length / 12);
+    return `<div class="grafico"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Gráfico">
+      <line class="eixo" x1="0" x2="${W}" y1="${base}" y2="${base}"/>
+      ${dados.map((d, i) => {
+        const v = valor(d), h = Math.round((base - topo) * v / max), x = i * passo + (passo - larg) / 2;
+        return `<g><title>${esc(rotulo(d))}: ${esc(formatar(v))}</title><rect class="barra-g ${destaque && !destaque(d) ? 'fraca' : ''}" x="${x.toFixed(1)}" y="${base - h}" width="${larg.toFixed(1)}" height="${Math.max(h, v ? 2 : 0)}" rx="4"/>
+          ${i % marcar === 0 ? `<text x="${(x + larg / 2).toFixed(1)}" y="${H - 8}" text-anchor="middle">${esc(rotulo(d))}</text>` : ''}
+          ${dados.length <= 10 && v ? `<text class="valor-g" x="${(x + larg / 2).toFixed(1)}" y="${base - h - 6}" text-anchor="middle">${esc(formatar(v))}</text>` : ''}</g>`;
+      }).join('')}
+    </svg></div>`;
+  }
+
+  const listaBarras = (itens, total) => `<div class="lista-barras">${itens.map(([nome, valor, pct]) => `<div class="linha"><b>${esc(nome)}</b><span>${valor}</span><div class="trilho"><i style="width:${pct > 0 ? Math.max(2, Math.round(pct * 100)) : 0}%"></i></div></div>`).join('') || '<p class="sutil" style="margin:0">Sem dados no período.</p>'}</div>`;
+
+  async function relatorios() {
+    const q = new URLSearchParams(filtroRel);
+    let r;
+    try { r = await api('/api/relatorios?' + q); } catch (er) { return falhou(er); }
+    const rs = r.resumo, av = r.avaliacoes;
+    const dm = d => { const [a, m, dd] = d.split('-'); return `${dd}/${m}`; };
+    const totalFormas = r.formas.reduce((a, f) => a + f.total, 0) || 1;
+    const maxProd = Math.max(1, ...r.produtos.map(p => Number(p.quantidade)));
+    const maxMesa = Math.max(1, ...r.mesas.map(m => m.total));
+    const horas = r.por_hora.map((v, h) => ({ h, v }));
+    const ini = horas.findIndex(x => x.v), fim = 23 - [...horas].reverse().findIndex(x => x.v);
+    const horasUteis = ini >= 0 ? horas.slice(Math.max(0, ini - 1), Math.min(24, fim + 2)) : horas.slice(10, 24);
+    const pico = Math.max(...r.por_hora);
+    main().innerHTML = cabecalho('Relatórios', `${dm(r.periodo.de)}${r.periodo.de !== r.periodo.ate ? ' a ' + dm(r.periodo.ate) : ''}`, `<button class="btn btn-borda" id="irCaixa">${icone('caixa', 18, 2)} Fechamento de caixa</button>`)
+      + `<div class="filtros">${periodos.map(([k, n]) => `<button data-p="${k}" class="${r.periodo.tipo === k ? 'ativo' : ''}">${n}</button>`).join('')}
+        <span class="sutil" style="margin-left:6px">ou</span><input type="date" id="de" value="${r.periodo.de}" aria-label="De"><input type="date" id="ate" value="${r.periodo.ate}" aria-label="Até"><button data-p="personalizado" class="${r.periodo.tipo === 'personalizado' ? 'ativo' : ''}">Ver período</button></div>
+      <div class="numeros">
+        <div class="numero destaque"><small>Recebido</small><b>${real(rs.faturado)}</b><span>${rs.taxas ? `inclui ${real(rs.taxas)} de serviço` : 'sem taxa de serviço'}</span></div>
+        <div class="numero"><small>Contas fechadas</small><b>${rs.contas}</b><span>${rs.permanencia_min != null ? `${rs.permanencia_min} min na mesa, em média` : '—'}</span></div>
+        <div class="numero"><small>Ticket médio por mesa</small><b>${real(rs.ticket_medio)}</b><span>${real(rs.por_pessoa)} por pessoa</span></div>
+        <div class="numero"><small>Pedidos</small><b>${rs.pedidos}</b><span>${rs.itens} itens${rs.cancelados ? `, ${rs.cancelados} cancelados` : ''}</span></div>
+        <div class="numero"><small>Tempo de preparo</small><b>${rs.preparo_min != null ? Math.round(rs.preparo_min) + ' min' : '—'}</b><span>${rs.espera_min != null ? `${Math.round(rs.espera_min)} min até começar` : 'do pedido até ficar pronto'}</span></div>
+        <div class="numero"><small>Avaliação</small><b>${av.media != null ? String(av.media).replace('.', ',') + ' ★' : '—'}</b><span>${av.total} ${av.total === 1 ? 'avaliação' : 'avaliações'}</span></div>
+      </div>
+      <div class="paineis">
+        <div class="painel largo"><h3>Vendas por dia</h3><p>Valor recebido nas contas fechadas em cada dia.</p>
+          ${graficoBarras(r.por_dia, { rotulo: d => dm(d.dia), valor: d => d.total, formatar: v => real(v) })}</div>
+        <div class="painel largo"><h3>Movimento por hora</h3><p>Pedidos feitos em cada horário${pico ? `; o pico é às ${r.por_hora.indexOf(pico)}h` : ''}.</p>
+          ${graficoBarras(horasUteis, { altura: 150, rotulo: d => d.h + 'h', valor: d => d.v, formatar: v => v + ' pedidos', destaque: d => d.v === pico })}</div>
+        <div class="painel"><h3>Formas de pagamento</h3><p>Quanto entrou por cada forma.</p>
+          ${listaBarras(r.formas.filter(f => f.total).map(f => [FORMAS[f.forma], `${real(f.total)} · ${Math.round(f.total / totalFormas * 100)}%`, f.total / totalFormas]))}</div>
+        <div class="painel"><h3>Mais vendidos</h3><p>Por quantidade vendida.</p>
+          ${listaBarras(r.produtos.map(p => [p.nome, `${p.quantidade} un · ${real(p.total)}`, p.quantidade / maxProd]))}</div>
+        <div class="painel"><h3>Mesas que mais faturaram</h3><p>Valor recebido por mesa.</p>
+          ${listaBarras(r.mesas.map(m => [m.mesa, `${real(m.total)} · ${m.contas} contas`, m.total / maxMesa]))}</div>
+        <div class="painel largo"><h3>Avaliações dos clientes</h3>
+          ${av.total ? `<div class="paineis" style="grid-template-columns:repeat(auto-fit,minmax(260px,1fr));margin-top:10px">
+            <div>${listaBarras([5, 4, 3, 2, 1].map(n => [`${n} ${n === 1 ? 'estrela' : 'estrelas'}`, String(av.distribuicao[n]), av.distribuicao[n] / av.total]))}
+              <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:14px">${Object.entries(av.tags).map(([t, n]) => `<span class="chip ${['Demorou', 'Pedido errado', 'Comida fria', 'Tablet difícil de usar'].includes(t) ? 'vermelho' : 'verde'}">${esc(t)} · ${n}</span>`).join('')}</div></div>
+            <div>${av.ultimas.map(c => `<div class="comentario">${estrelas(c.nota)} <small class="sutil">${esc(c.mesa || '')} · ${esc(c.quando)}</small>${c.comentario ? `<p>${esc(c.comentario)}</p>` : ''}${c.tags.length ? `<div class="tags">${c.tags.map(t => `<span class="chip cinza">${esc(t)}</span>`).join('')}</div>` : ''}</div>`).join('') || '<p class="sutil">Nenhum comentário no período.</p>'}</div>
+          </div>` : '<p class="sutil" style="margin:6px 0 0">Nenhuma avaliação no período. Elas aparecem quando o cliente pede a conta pelo tablet.</p>'}</div>
+      </div>`;
+    main().querySelector('#irCaixa').onclick = () => mudarAba('caixa');
+    main().querySelector('.filtros').onclick = e => {
+      const b = e.target.closest('[data-p]'); if (!b) return;
+      filtroRel = b.dataset.p === 'personalizado' ? { periodo: 'personalizado', de: main().querySelector('#de').value, ate: main().querySelector('#ate').value } : { periodo: b.dataset.p };
+      relatorios();
+    };
+  }
+
+  /* ------------------------------------------------------------ CAIXA */
+  let diaCaixa = '';
+  async function caixaPg() {
+    let r;
+    try { r = await api('/api/caixa' + (diaCaixa ? '?dia=' + diaCaixa : '')); } catch (er) { return falhou(er); }
+    const t = r.totais;
+    const [a, m, d] = r.dia.split('-');
+    main().innerHTML = cabecalho('Fechamento de caixa', `${d}/${m}/${a}`, `<input type="date" id="dia" value="${r.dia}" class="filtro-dia" aria-label="Dia" style="height:46px;border-radius:14px;border:2px solid var(--linha);padding:0 12px;font-weight:600;background:var(--superficie);color:var(--texto)"><button class="btn btn-azul" id="imprimir">${icone('impressora', 18, 2)} Imprimir</button>`)
+      + `<div class="numeros">
+        <div class="numero destaque"><small>Total recebido</small><b>${real(t.total)}</b><span>${t.contas} ${t.contas === 1 ? 'conta fechada' : 'contas fechadas'}</span></div>
+        ${r.formas.map(f => `<div class="numero"><small>${FORMAS[f.forma]}</small><b>${real(f.total)}</b><span>${f.qtd} ${f.qtd === 1 ? 'pagamento' : 'pagamentos'}</span></div>`).join('')}
+        <div class="numero"><small>Taxa de serviço</small><b>${real(t.taxa)}</b><span>consumo ${real(t.subtotal)}</span></div>
+      </div>
+      ${r.em_aberto.contas ? `<div class="aviso">${r.em_aberto.contas} ${r.em_aberto.contas === 1 ? 'mesa ainda está' : 'mesas ainda estão'} com conta aberta (${real(r.em_aberto.total)}). Elas entram no caixa quando forem fechadas.</div>` : ''}
+      ${r.cancelados.qtd ? `<div class="aviso perigo">${r.cancelados.qtd} ${r.cancelados.qtd === 1 ? 'pedido cancelado' : 'pedidos cancelados'} no dia, somando ${real(r.cancelados.total)}.</div>` : ''}
+      ${r.contas.length ? `<div class="rolagem"><table class="tabela"><thead><tr><th>Hora</th><th>Mesa</th><th>Consumo</th><th>Serviço</th><th>Total</th><th>Pagamento</th><th>Fechada por</th></tr></thead><tbody>
+        ${r.contas.map(c => `<tr><td>${c.hora}</td><td><b>${esc(c.mesa || '—')}</b>${c.pessoas > 1 ? `<br><small class="sutil">${c.pessoas} pessoas</small>` : ''}</td><td>${real(c.subtotal)}</td><td>${c.taxa ? real(c.taxa) : '—'}</td><td><b>${real(c.total)}</b></td>
+          <td>${c.pagamentos.map(p => `${FORMAS[p.forma] || p.forma} ${real(p.valor)}`).join('<br>')}</td><td class="sutil">${esc(c.quem || '')}</td></tr>`).join('')}
+      </tbody></table></div>` : '<div class="vazio-painel"><b>Nenhuma conta fechada neste dia.</b><span>Escolha outra data acima.</span></div>'}`;
+    main().querySelector('#dia').onchange = e => { diaCaixa = e.target.value; caixaPg(); };
+    main().querySelector('#imprimir').onclick = () => imprimir(`<h1>${esc(r.estabelecimento)}</h1><div class="c">FECHAMENTO DE CAIXA</div><div class="c">${d}/${m}/${a}</div><hr>
+      ${r.formas.map(f => `<div class="l"><span>${FORMAS[f.forma]} (${f.qtd})</span><span>${real(f.total)}</span></div>`).join('')}<hr>
+      <div class="l"><span>Consumo</span><span>${real(t.subtotal)}</span></div><div class="l"><span>Taxa de serviço</span><span>${real(t.taxa)}</span></div>
+      <div class="l g"><span>TOTAL</span><span>${real(t.total)}</span></div><div class="l"><span>Contas fechadas</span><span>${t.contas}</span></div>
+      ${r.cancelados.qtd ? `<div class="l"><span>Cancelados (${r.cancelados.qtd})</span><span>${real(r.cancelados.total)}</span></div>` : ''}
+      ${r.em_aberto.contas ? `<div class="l"><span>Em aberto (${r.em_aberto.contas})</span><span>${real(r.em_aberto.total)}</span></div>` : ''}<hr>
+      <div class="c">Impresso em ${esc(r.gerado_em)}</div><div class="c" style="margin-top:8mm">________________________<br>Conferido por</div>`);
+  }
+
+  /* ------------------------------------------------------------ PLATAFORMA: sistema, sugestões, erros */
+  async function sistema() {
+    const st = await atualizarContadores();
+    if (!st) return;
+    const item = (ok, titulo, texto) => `<div><b>${ok ? '<span class="chip verde">Ativo</span>' : '<span class="chip amarelo">Desligado</span>'} ${titulo}</b><small>${texto}</small></div>`;
+    main().innerHTML = cabecalho('Sistema e backup', `Endereço: ${esc(st.url)}`)
+      + (st.sem_volume ? `<div class="aviso perigo"><b>Atenção:</b> sem volume no Railway. Os dados serão apagados no próximo deploy.</div>` : '')
+      + `<div class="estado-servicos">
+        ${item(st.email, 'E-mail (Brevo)', st.email ? 'Envia boas-vindas, recuperação de senha, backups e alertas.' : 'Crie BREVO_API_KEY e EMAIL_REMETENTE nas variáveis do Railway.')}
+        ${item(st.google, 'Login com Google', st.google ? 'Botão "Entrar com Google" visível.' : 'Crie GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET (veja o LEIA-ME).')}
+        ${item(st.cadastro, 'Cadastro aberto', st.cadastro ? 'Restaurantes podem criar conta pelo site.' : 'Só você cadastra restaurantes (CADASTRO_ABERTO=0).')}
+        ${item(!st.sem_volume, 'Volume de dados', st.sem_volume ? 'Sem volume em /data.' : 'Banco e fotos guardados com segurança.')}
+      </div>
+      <div class="cartoes"><div class="cartao"><h3>Backup</h3>
+        <p style="margin:0">${st.backup ? `Último backup automático: <b>${dataHora(st.backup.quando)}</b>${st.backup.info?.email ? ', enviado por e-mail' : ''}.` : 'Ainda não foi feito nenhum backup.'}</p>
+        <p class="sutil" style="margin:0">Um backup é feito por dia e os 7 últimos ficam guardados no volume. Com o e-mail configurado, ele também chega na sua caixa de entrada.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap"><a class="btn btn-borda" href="/api/plataforma/backup" download>Baixar agora</a><button class="btn btn-azul" id="enviarBackup">Enviar por e-mail agora</button></div>
+        ${st.backups.length ? `<p class="sutil" style="margin:0">${st.backups.map(b => `${esc(b.nome)} (${Math.max(1, Math.round(b.bytes / 1024))} KB)`).join('<br>')}</p>` : ''}
+      </div></div>`;
+    main().querySelector('#enviarBackup').onclick = async e => {
+      e.target.disabled = true;
+      try { await api('/api/plataforma/backup/enviar', { metodo: 'POST' }); toast('Backup enviado para o seu e-mail.'); sistema(); } catch (er) { falhou(er); sistema(); }
+    };
+  }
+
+  async function sugestoesPg() {
+    let r;
+    try { r = await api('/api/plataforma/sugestoes'); } catch (er) { return falhou(er); }
+    atualizarContadores();
+    const tipos = { sugestao: ['Sugestão', ''], problema: ['Problema', 'vermelho'], elogio: ['Elogio', 'verde'] };
+    main().innerHTML = cabecalho('Sugestões', `${r.sugestoes.filter(s => !s.lida).length} novas`)
+      + (r.sugestoes.length ? r.sugestoes.map(s => `<div class="cartao" style="margin-bottom:12px;${s.lida ? 'opacity:.6' : ''}">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="chip ${tipos[s.tipo][1]}">${tipos[s.tipo][0]}</span><b>${esc(s.estabelecimento || 'Plataforma')}</b><span class="sutil">${esc(s.autor || '')} · ${esc(s.email || '')} · ${dataHora(s.created_at)}</span><span style="flex:1"></span>
+          <button class="btn btn-p ${s.lida ? 'btn-borda' : 'btn-claro'}" data-lida="${s.id}" data-v="${s.lida ? 0 : 1}">${s.lida ? 'Marcar como nova' : 'Marcar como lida'}</button></div>
+        <p style="margin:0;white-space:pre-wrap">${esc(s.texto)}</p></div>`).join('') : '<div class="vazio-painel"><b>Nenhuma sugestão ainda.</b><span>Os restaurantes enviam pelo botão "Sugestão" no painel.</span></div>');
+    main().onclick = async e => {
+      const b = e.target.closest('[data-lida]'); if (!b) return;
+      try { await api(`/api/plataforma/sugestoes/${b.dataset.lida}`, { metodo: 'POST', dados: { lida: b.dataset.v === '1' } }); sugestoesPg(); } catch (er) { falhou(er); }
+    };
+  }
+
+  async function errosPg() {
+    let r;
+    try { r = await api('/api/plataforma/erros'); } catch (er) { return falhou(er); }
+    atualizarContadores();
+    const abertos = r.erros.filter(e => !e.resolvido).length;
+    main().innerHTML = cabecalho('Erros', abertos ? `${abertos} sem resolver` : 'Nenhum erro aberto')
+      + (r.erros.length ? r.erros.map(e => `<div class="cartao erro-item ${e.resolvido ? 'resolvido' : ''}" style="margin-bottom:12px">
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><span class="chip ${e.origem === 'servidor' ? 'vermelho' : 'amarelo'}">${e.origem === 'servidor' ? 'Servidor' : 'Navegador'}</span>
+          <b>${e.contagem}×</b><span class="sutil">última vez ${dataHora(e.ultima_em)} · primeira ${dataHora(e.primeira_em)}</span><span style="flex:1"></span>
+          <button class="btn btn-p ${e.resolvido ? 'btn-borda' : 'btn-sucesso'}" data-resolver="${e.id}" data-v="${e.resolvido ? 0 : 1}">${e.resolvido ? 'Reabrir' : 'Marcar como resolvido'}</button></div>
+        <p style="margin:0;font-weight:600;word-break:break-word">${esc(e.mensagem)}</p><small class="sutil">${esc(e.url)}</small>
+        ${e.detalhe ? `<details><summary class="sutil" style="cursor:pointer">Detalhes</summary><pre>${esc(e.detalhe)}</pre></details>` : ''}</div>`).join('') : '<div class="vazio-painel"><b>Nenhum erro registrado.</b><span>Quando algo der errado no servidor ou nos navegadores, aparece aqui e você recebe um e-mail.</span></div>');
+    main().onclick = async e => {
+      const b = e.target.closest('[data-resolver]'); if (!b) return;
+      try { await api(`/api/plataforma/erros/${b.dataset.resolver}`, { metodo: 'POST', dados: { resolvido: b.dataset.v === '1' } }); errosPg(); } catch (er) { falhou(er); }
+    };
+  }
+
+  function sugestaoModal() {
+    formulario('Enviar sugestão', `
+      <p class="sutil" style="margin:0">O Deu Fome está em beta. Conte o que podemos melhorar, um problema que encontrou ou o que você gostou.</p>
+      <label class="campo">Tipo<select name="tipo"><option value="sugestao">Sugestão</option><option value="problema">Problema</option><option value="elogio">Elogio</option></select></label>
+      <label class="campo">Mensagem<textarea name="texto" required minlength="5" maxlength="2000" rows="5"></textarea></label>`, {
+      enviar: 'Enviar',
+      aoEnviar: async d => { await api('/api/sugestoes', { metodo: 'POST', dados: d }); toast('Obrigado! Sua mensagem foi enviada.'); },
+    });
+  }
+
   async function iniciar() {
-    try { eu = await api('/api/me'); } catch { return telaLogin(); }
+    try { info = await api('/api/info'); } catch {}
+    const red = location.hash.match(/^#redefinir=([a-f0-9]{64})$/);
+    if (red) return telaRedefinir(red[1]);
+    try { eu = await api('/api/me'); } catch {
+      abertura();
+      return location.pathname === '/cadastro' ? telaCadastro() : telaLogin();
+    }
+    if (location.pathname === '/cadastro') history.replaceState(null, '', '/admin');
     if (eu.papel === 'cozinha') return location.href = '/cozinha';
     layout();
   }
