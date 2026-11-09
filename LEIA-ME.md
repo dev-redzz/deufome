@@ -58,6 +58,8 @@ No serviço, aba **Variables**, crie:
 
 O administrador é criado no primeiro acesso. Trocar a variável depois **não** troca a senha: use **Minha senha** dentro do painel.
 
+**Não consegue entrar?** Abra `https://SEU-DOMINIO/saude`. Os campos mostram se o e-mail foi lido (`variavel_email`), se a senha tem 8 caracteres ou mais (`variavel_senha_ok`), se o administrador já existe (`administrador_criado`) e se o volume está ligado (`volume`). Para forçar a senha das variáveis, crie `PLATAFORMA_REDEFINIR` = `1`, publique, entre, e depois apague essa variável.
+
 ### 5. Gerar o endereço
 
 Aba **Settings → Networking → Generate Domain**. Se pedir a porta, use `8080`. Você recebe algo como `deu-fome-production.up.railway.app`. Se quiser um domínio próprio, adicione em **Custom Domain**.

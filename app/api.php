@@ -323,6 +323,7 @@ function r_login(): never
 {
     $in = entrada();
     $email = strtolower(trim((string)($in['email'] ?? '')));
+    $in['senha'] = (string)($in['senha'] ?? '');
     $ip = ip_cliente();
     $pdo = db();
     $limite = gmdate('Y-m-d H:i:s', time() - 15 * 60);

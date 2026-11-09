@@ -194,19 +194,48 @@ function migrar(PDO $pdo): void
     }
 }
 
+function variavel(string $nome): string
+{
+    $v = trim((string)getenv($nome));
+    if (strlen($v) >= 2 && ($v[0] === '"' || $v[0] === "'") && $v[0] === substr($v, -1)) $v = trim(substr($v, 1, -1));
+    return $v;
+}
+
 function garantir_plataforma(PDO $pdo): void
 {
-    $email = strtolower(trim((string)getenv('PLATAFORMA_EMAIL')));
-    $senha = (string)getenv('PLATAFORMA_SENHA');
+    $email = strtolower(variavel('PLATAFORMA_EMAIL'));
+    $senha = variavel('PLATAFORMA_SENHA');
     if ($email === '' || strlen($senha) < 8) return;
-    $st = $pdo->prepare('SELECT 1 FROM users WHERE email = ?');
+    $st = $pdo->prepare('SELECT id, papel, senha_hash, ativo FROM users WHERE email = ?');
     $st->execute([$email]);
-    if ($st->fetchColumn()) return;
-    try {
-        $pdo->prepare("INSERT INTO users (tenant_id, nome, email, senha_hash, papel, created_at) VALUES (NULL, 'Administrador', ?, ?, 'plataforma', ?)")
-            ->execute([$email, password_hash($senha, PASSWORD_DEFAULT), agora()]);
-    } catch (PDOException $e) {
+    $u = $st->fetch();
+    if (!$u) {
+        try {
+            $pdo->prepare("INSERT INTO users (tenant_id, nome, email, senha_hash, papel, created_at) VALUES (NULL, 'Administrador', ?, ?, 'plataforma', ?)")
+                ->execute([$email, password_hash($senha, PASSWORD_DEFAULT), agora()]);
+        } catch (PDOException $e) {
+        }
+        return;
     }
+    if (variavel('PLATAFORMA_REDEFINIR') === '1' && $u['papel'] === 'plataforma' && (!$u['ativo'] || !password_verify($senha, $u['senha_hash']))) {
+        $pdo->prepare('UPDATE users SET senha_hash = ?, ativo = 1 WHERE id = ?')->execute([password_hash($senha, PASSWORD_DEFAULT), $u['id']]);
+        $pdo->prepare('DELETE FROM login_tentativas WHERE email = ?')->execute([$email]);
+    }
+}
+
+function situacao_plataforma(PDO $pdo): array
+{
+    $email = strtolower(variavel('PLATAFORMA_EMAIL'));
+    $senha = variavel('PLATAFORMA_SENHA');
+    $st = $pdo->prepare("SELECT papel FROM users WHERE email = ?");
+    $st->execute([$email]);
+    $papel = $st->fetchColumn();
+    return [
+        'variavel_email' => $email !== '',
+        'variavel_senha_ok' => strlen($senha) >= 8,
+        'administrador_criado' => $papel === 'plataforma',
+        'volume' => !SEM_VOLUME,
+    ];
 }
 
 function slug_unico(PDO $pdo, string $nome): string

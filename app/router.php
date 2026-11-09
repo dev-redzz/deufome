@@ -21,7 +21,7 @@ if ($caminho === '/saude') {
     header('Cache-Control: no-store');
     try {
         db()->query('SELECT 1')->fetchColumn();
-        echo json_encode(['ok' => true, 'versao' => versao_app()]);
+        echo json_encode(['ok' => true, 'versao' => versao_app()] + situacao_plataforma(db()));
     } catch (Throwable $e) {
         error_log((string)$e);
         http_response_code(503);
