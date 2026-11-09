@@ -27,7 +27,7 @@ import DF from './comum.js';
   let enviando = false;
   let chavePendente = null;
   let timerInatividade, timerPoll, toquesLogo = [], ultimoFechado = false;
-  let ap = {};
+  let ap = {}, destaques = [], selos = {};
 
   /* ---------------------------------------------------- aparência escolhida pelo restaurante */
   function misturar(hex, alvo, peso) {
@@ -181,6 +181,8 @@ import DF from './comum.js';
       const r = await apiT('/api/tablet/cardapio');
       categorias = r.categorias.filter(c => c.produtos.length);
       versaoCardapio = r.versao;
+      destaques = r.destaques || [];
+      selos = r.selos || {};
       aplicarAparencia(r.aparencia);
       if (tela === 'descanso' && estado?.mesa) desenharDescanso();
       carrinho = carrinho.filter(i => produto(i.produtoId)?.disponivel);
@@ -314,20 +316,10 @@ import DF from './comum.js';
     if (!categoriaAtiva && categorias[0]) categoriaAtiva = categorias[0].id;
     cont.classList.toggle('sem-fotos', ap.mostrar_fotos === false);
     cont.classList.toggle('sem-descricao', ap.mostrar_descricao === false);
-    cont.innerHTML = (fechado() ? `<div class="aviso-fechado">${icone('relogio', 24, 2.5)} ${esc(textoFechado())} Você pode ver o cardápio, mas os pedidos estão pausados.</div>` : '') + categorias.map(c => `<section id="cat-${c.id}">
+    const listaDestaques = destaques.map(produto).filter(p => p && p.disponivel);
+    cont.innerHTML = (listaDestaques.length >= 2 ? `<section class="destaques"><h2>${icone('fogo', 30, 2.2)} Mais pedidos da casa</h2><div class="grade grade-destaques">${listaDestaques.map(p => cartao(p, true)).join('')}</div></section>` : '') + (fechado() ? `<div class="aviso-fechado">${icone('relogio', 24, 2.5)} ${esc(textoFechado())} Você pode ver o cardápio, mas os pedidos estão pausados.</div>` : '') + categorias.map(c => `<section id="cat-${c.id}">
       <h2>${esc(c.nome)}</h2>
-      <div class="grade">${c.produtos.map(p => {
-        const q = qtdNoCarrinho(p.id);
-        return `<button class="card ${p.disponivel ? '' : 'indisp'}" data-p="${p.id}">
-          <div class="foto" style="background-image:url('${esc(p.imagem || '/img/sem-foto.svg')}')"></div>
-          ${!p.disponivel ? '<span class="chip cinza selo">Indisponível</span>' : ''}
-          ${q ? `<span class="qtd-no-carrinho">${q}</span>` : ''}
-          <div class="info">
-            <div class="nome">${esc(p.nome)}</div>
-            <div class="desc">${esc(p.descricao)}</div>
-            <div class="rodape"><span class="preco">${real(p.preco)}</span><span class="mais">${icone('mais', 30, 3)}</span></div>
-          </div></button>`;
-      }).join('')}</div></section><div style="height:28px"></div>`).join('');
+      <div class="grade">${c.produtos.map(p => cartao(p)).join('')}</div></section><div style="height:28px"></div>`).join('');
     cont.onclick = e => {
       const b = e.target.closest('.card'); if (!b) return;
       const p = produto(Number(b.dataset.p));
@@ -339,6 +331,21 @@ import DF from './comum.js';
     atualizarBarra();
   }
 
+  function cartao(p, destaque = false) {
+    const q = qtdNoCarrinho(p.id);
+    const selo = p.selo && selos[p.selo] ? `<span class="selo-produto ${esc(p.selo)}">${esc(selos[p.selo])}</span>` : '';
+    return `<button class="card ${p.disponivel ? '' : 'indisp'} ${destaque ? 'card-destaque' : ''}" data-p="${p.id}">
+      <div class="foto" style="background-image:url('${esc(p.imagem || '/img/sem-foto.svg')}')"></div>
+      ${!p.disponivel ? '<span class="chip cinza selo">Indisponível</span>' : ''}
+      ${q ? `<span class="qtd-no-carrinho">${q}</span>` : ''}
+      <div class="info">
+        ${selo}
+        <div class="nome">${esc(p.nome)}</div>
+        <div class="desc">${esc(p.descricao)}</div>
+        <div class="rodape"><span class="preco">${real(p.preco)}</span><span class="mais">${icone('mais', 30, 3)}</span></div>
+      </div></button>`;
+  }
+
   function atualizarBarra() {
     const barra = raiz.querySelector('#barra'); if (!barra) return;
     const qtd = carrinho.reduce((s, i) => s + i.qtd, 0);
@@ -346,7 +353,7 @@ import DF from './comum.js';
     const conta = estado?.total || 0;
     barra.innerHTML = `${ap.chamar_garcom === false ? '' : `<button class="btn ajuda" id="ajuda">${icone('sino', 26)}<span>Chamar garçom</span></button>`}
       <div class="resumo">${qtd ? `<span class="bolha">${qtd}</span><span class="rotulo">${qtd === 1 ? 'item' : 'itens'} no carrinho</span><span class="total">${real(total)}</span>`
-        : conta ? `<span class="rotulo" style="opacity:.8">Conta da mesa até agora</span><span class="total">${real(conta)}</span>` : '<span class="dica" style="opacity:.75">Escolha seus itens no cardápio</span>'}</div>
+        : conta ? `<span class="rotulo" style="opacity:.8">Conta da mesa até agora</span><span class="total">${real(conta)}</span>` : '<span class="dica" style="opacity:.75">Toque em um prato para ver os detalhes e adicionar</span>'}</div>
       ${qtd ? `<button class="btn btn-azul" id="verCarrinho">${icone('sacola', 26)} Ver carrinho</button>` : estado?.pedidos?.length && tela !== 'pedidos' ? `<button class="btn btn-azul" id="verPedidos">${icone('relogio', 26)} <span class="txt-longo">Acompanhar pedidos</span><span class="txt-curto">Pedidos</span></button>` : ''}`;
     barra.querySelector('#ajuda')?.addEventListener('click', abrirAjuda);
     barra.querySelector('#verCarrinho')?.addEventListener('click', abrirCarrinho);
@@ -367,6 +374,7 @@ import DF from './comum.js';
     const m = modal(`<div class="produto-modal">
       <div class="foto ${ap.mostrar_fotos === false ? 'sem' : ''}" style="background-image:url('${esc(p.imagem || '/img/sem-foto.svg')}')"><button class="fechar" data-fechar>${icone('x', 30, 3)}</button></div>
       <div class="corpo">
+        ${p.selo && selos[p.selo] ? `<span class="selo-produto ${esc(p.selo)}">${esc(selos[p.selo])}</span>` : ''}
         <h2>${esc(p.nome)}</h2>
         <p class="desc">${esc(p.descricao)}</p>
         <span class="preco" style="font-size:28px">${real(p.preco)}</span>

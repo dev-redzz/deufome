@@ -26,6 +26,44 @@ class PlataformaController extends Controller
             FROM tenants t ORDER BY t.nome", [$desde, $desde]), 'sem_volume' => sem_volume()]);
     }
 
+    public function resumo()
+    {
+        $d30 = gmdate('Y-m-d H:i:s', time() - 30 * 86400);
+        $d7 = gmdate('Y-m-d H:i:s', time() - 7 * 86400);
+        $porDia = [];
+        for ($i = 13; $i >= 0; $i--) {
+            $porDia[gmdate('Y-m-d', time() - $i * 86400)] = 0;
+        }
+        foreach (DB::select("SELECT substr(created_at, 1, 10) AS dia, COUNT(*) AS n FROM orders WHERE created_at >= ? AND status <> 'cancelado' GROUP BY dia", [gmdate('Y-m-d', time() - 13 * 86400)]) as $l) {
+            if (isset($porDia[$l['dia']])) {
+                $porDia[$l['dia']] = (int) $l['n'];
+            }
+        }
+        $online = 0;
+        foreach (DB::select("SELECT last_seen_at FROM devices WHERE status = 'ativo'") as $x) {
+            $online += \App\Services\Atendimento::online($x['last_seen_at']) ? 1 : 0;
+        }
+        $b = DB::selectOne("SELECT ultima_em FROM tarefas WHERE nome = 'backup'");
+
+        return response()->json([
+            'restaurantes' => (int) DB::scalar("SELECT COUNT(*) FROM tenants WHERE status = 'ativo'"),
+            'bloqueados' => (int) DB::scalar("SELECT COUNT(*) FROM tenants WHERE status <> 'ativo'"),
+            'novos_7d' => (int) DB::scalar('SELECT COUNT(*) FROM tenants WHERE created_at >= ?', [$d7]),
+            'pedidos_30d' => (int) DB::scalar("SELECT COUNT(*) FROM orders WHERE created_at >= ? AND status <> 'cancelado'", [$d30]),
+            'faturado_30d' => (int) DB::scalar("SELECT COALESCE(SUM(total),0) FROM table_sessions WHERE status = 'fechada' AND fechada_em >= ?", [$d30]),
+            'tablets' => ['ativos' => (int) DB::scalar("SELECT COUNT(*) FROM devices WHERE status = 'ativo'"), 'online' => $online],
+            'pedidos_por_dia' => array_map(fn ($d, $n) => ['dia' => $d, 'pedidos' => $n], array_keys($porDia), $porDia),
+            'recentes' => DB::select("SELECT t.id, t.nome, t.status, t.created_at, (SELECT email FROM users u WHERE u.tenant_id = t.id AND u.papel = 'dono' ORDER BY u.id LIMIT 1) AS dono_email,
+                (SELECT COUNT(*) FROM tables m WHERE m.tenant_id = t.id AND m.ativo = 1) AS mesas, (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS produtos,
+                (SELECT COUNT(*) FROM devices d WHERE d.tenant_id = t.id AND d.status = 'ativo') AS tablets
+                FROM tenants t ORDER BY t.id DESC LIMIT 6"),
+            'erros_abertos' => (int) DB::scalar('SELECT COUNT(*) FROM erros WHERE resolvido = 0'),
+            'sugestoes_novas' => (int) DB::scalar('SELECT COUNT(*) FROM sugestoes WHERE lida = 0'),
+            'servicos' => ['email' => Email::configurado(), 'google' => GoogleController::configurado(), 'cadastro' => CadastroController::aberto(), 'volume' => ! sem_volume(),
+                'backup' => $b['ultima_em'] ?? null],
+        ]);
+    }
+
     public function criar()
     {
         $u = usuario();

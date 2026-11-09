@@ -71,6 +71,8 @@ class TabletController extends Controller
         return response()->json([
             'categorias' => Cardapio::montar($tid),
             'versao' => Cardapio::versao($tid),
+            'destaques' => Cardapio::destaques($tid),
+            'selos' => Cardapio::SELOS,
             'aparencia' => Preferencias::paraTablet($d),
         ]);
     }

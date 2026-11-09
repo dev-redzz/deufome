@@ -63,9 +63,25 @@ class CardapioController extends Controller
         }
     }
 
+    private static function selo(array $in, ?string $atual = null): ?string
+    {
+        if (! array_key_exists('selo', $in)) {
+            return $atual;
+        }
+        $s = (string) $in['selo'];
+        if ($s === '') {
+            return null;
+        }
+        if (! isset(Cardapio::SELOS[$s])) {
+            erro(422, 'Selo inválido.');
+        }
+
+        return $s;
+    }
+
     public function listar()
     {
-        return response()->json(['categorias' => Cardapio::montar((int) usuario()['tenant_id'])]);
+        return response()->json(['categorias' => Cardapio::montar((int) usuario()['tenant_id']), 'selos' => Cardapio::SELOS]);
     }
 
     public function criarProduto()
@@ -80,7 +96,7 @@ class CardapioController extends Controller
             $ordem = (int) DB::scalar('SELECT COALESCE(MAX(ordem), -1) + 1 FROM products WHERE category_id = ?', [$cat['id']]);
             $pid = DB::table('products')->insertGetId([
                 'tenant_id' => $tid, 'category_id' => $cat['id'], 'nome' => $nome, 'descricao' => $desc, 'preco' => $preco,
-                'disponivel' => empty($in['disponivel']) && array_key_exists('disponivel', $in) ? 0 : 1, 'ordem' => $ordem,
+                'disponivel' => empty($in['disponivel']) && array_key_exists('disponivel', $in) ? 0 : 1, 'ordem' => $ordem, 'selo' => self::selo($in),
             ]);
             self::salvarAdicionais($tid, $pid, $in['adicionais'] ?? []);
 
@@ -100,8 +116,9 @@ class CardapioController extends Controller
         $preco = array_key_exists('preco', $in) ? centavos($in['preco']) : (int) $p['preco'];
         $disp = array_key_exists('disponivel', $in) ? ($in['disponivel'] ? 1 : 0) : (int) $p['disponivel'];
         $cat = array_key_exists('categoria_id', $in) ? (int) self::categoria($tid, (int) $in['categoria_id'])['id'] : (int) $p['category_id'];
-        DB::transaction(function () use ($nome, $desc, $preco, $disp, $cat, $p, $in, $tid) {
-            DB::update('UPDATE products SET nome = ?, descricao = ?, preco = ?, disponivel = ?, category_id = ? WHERE id = ?', [$nome, $desc, $preco, $disp, $cat, $p['id']]);
+        $selo = self::selo($in, $p['selo']);
+        DB::transaction(function () use ($nome, $desc, $preco, $disp, $cat, $p, $in, $tid, $selo) {
+            DB::update('UPDATE products SET nome = ?, descricao = ?, preco = ?, disponivel = ?, category_id = ?, selo = ? WHERE id = ?', [$nome, $desc, $preco, $disp, $cat, $selo, $p['id']]);
             if (array_key_exists('adicionais', $in)) {
                 self::salvarAdicionais($tid, (int) $p['id'], $in['adicionais']);
             }

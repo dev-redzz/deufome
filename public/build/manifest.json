@@ -1,10 +1,10 @@
 {
-  "_comum-BAr_rLhQ.js": {
-    "file": "assets/comum-BAr_rLhQ.js",
+  "_comum-BcABLenr.js": {
+    "file": "assets/comum-BcABLenr.js",
     "name": "comum"
   },
   "resources/css/app.css": {
-    "file": "assets/app-lWv-fmC1.css",
+    "file": "assets/app-ChLZEXaZ.css",
     "name": "app",
     "names": [
       "app.css"
@@ -13,30 +13,30 @@
     "isEntry": true
   },
   "resources/js/admin.js": {
-    "file": "assets/admin-DHZ3-NFB.js",
+    "file": "assets/admin-DG6rosSF.js",
     "name": "admin",
     "src": "resources/js/admin.js",
     "isEntry": true,
     "imports": [
-      "_comum-BAr_rLhQ.js"
+      "_comum-BcABLenr.js"
     ]
   },
   "resources/js/cozinha.js": {
-    "file": "assets/cozinha-DN2Ij3K7.js",
+    "file": "assets/cozinha-BKseP9lk.js",
     "name": "cozinha",
     "src": "resources/js/cozinha.js",
     "isEntry": true,
     "imports": [
-      "_comum-BAr_rLhQ.js"
+      "_comum-BcABLenr.js"
     ]
   },
   "resources/js/tablet.js": {
-    "file": "assets/tablet-B-Ohy8J8.js",
+    "file": "assets/tablet-CV8SUmVB.js",
     "name": "tablet",
     "src": "resources/js/tablet.js",
     "isEntry": true,
     "imports": [
-      "_comum-BAr_rLhQ.js"
+      "_comum-BcABLenr.js"
     ]
   }
 }

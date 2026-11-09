@@ -13,6 +13,8 @@ import DF from './comum.js';
     cozinha: ['Cozinha', 'Só a tela da cozinha'],
   };
   const ABAS = {
+    visao: ['Visão geral', 'pulso', () => visao()],
+    inicio: ['Início', 'casa', () => inicio()],
     estabelecimentos: ['Estabelecimentos', 'loja', () => estabelecimentos()],
     sistema: ['Sistema e backup', 'cadeado', () => sistema()],
     sugestoes: ['Sugestões', 'balao', () => sugestoesPg()],
@@ -29,14 +31,15 @@ import DF from './comum.js';
     conta: ['Minha senha', 'cadeado', () => ajustes()],
   };
   const ABAS_POR_PAPEL = {
-    plataforma: ['estabelecimentos', 'sistema', 'sugestoes', 'erros', 'conta'],
-    dono: ['salao', 'caixa', 'relatorios', 'cardapio', 'mesas', 'dispositivos', 'aparencia', 'equipe', 'ajustes'],
-    gerente: ['salao', 'caixa', 'relatorios', 'cardapio', 'mesas', 'dispositivos', 'aparencia', 'equipe', 'ajustes'],
+    plataforma: ['visao', 'estabelecimentos', 'sistema', 'sugestoes', 'erros', 'conta'],
+    dono: ['inicio', 'salao', 'caixa', 'relatorios', 'cardapio', 'mesas', 'dispositivos', 'aparencia', 'equipe', 'ajustes'],
+    gerente: ['inicio', 'salao', 'caixa', 'relatorios', 'cardapio', 'mesas', 'dispositivos', 'aparencia', 'equipe', 'ajustes'],
     caixa: ['salao', 'caixa', 'conta'],
   };
-  const GRUPOS = { salao: 'No dia a dia', relatorios: 'Resultados', cardapio: 'Seu restaurante', estabelecimentos: 'Plataforma', conta: 'Sua conta' };
+  const GRUPOS = { inicio: 'No dia a dia', salao: 'No dia a dia', relatorios: 'Resultados', cardapio: 'Seu restaurante', visao: 'Plataforma', conta: 'Sua conta' };
   const FORMAS = { pix: 'Pix', dinheiro: 'Dinheiro', credito: 'Crédito', debito: 'Débito', dividido: 'Dividido' };
-  const AO_VIVO = ['salao', 'dispositivos'];
+  const AO_VIVO = ['salao', 'dispositivos', 'inicio'];
+  const SELOS = { novo: 'Novidade', promocao: 'Promoção', chef: 'Sugestão do chef', picante: 'Picante', vegetariano: 'Vegetariano' };
 
   const paraCentavos = v => {
     const n = parseFloat(String(v).trim().replace(/\s|R\$/g, '').replace(/\.(?=\d{3}(\D|$))/g, '').replace(',', '.'));
@@ -74,37 +77,46 @@ import DF from './comum.js';
     document.body.appendChild(a);
   }
 
-  function telaAcesso(conteudo, { titulo = 'Cada mesa com seu próprio cardápio.', texto = 'Acompanhe o salão, a cozinha e os tablets das mesas em um só lugar.' } = {}) {
+  function telaAcesso(conteudo, { titulo = 'Bem-vindo de volta.', texto = 'Acompanhe o salão, a cozinha e os tablets das mesas em um só lugar.' } = {}) {
     clearInterval(timer);
     raiz.innerHTML = `<div class="login">
-      <div class="lado"><a class="voltar-inicio" href="/"><img src="/img/logo.png" alt="Deu Fome"></a>
-        <div class="comandas" aria-hidden="true">
-          <div class="comanda-papel atras"><div class="cp-cab"><b>Mesa 07</b><span>há 2 min</span></div><ul><li><b>1×</b> Filé com fritas</li><li><b>2×</b> Suco natural</li></ul></div>
-          <div class="comanda-papel"><div class="cp-cab"><b>Mesa 04</b><span>agora</span></div><div class="cp-num">Pedido 128</div><ul><li><b>2×</b> Burger clássico<small>sem cebola</small></li><li><b>1×</b> Batata frita</li><li><b>1×</b> Açaí 400 ml</li></ul><div class="cp-btn">Começar preparo</div></div>
+      <aside class="lado">
+        <a class="marca-login" href="/"><img src="/img/logo.png" alt="Deu Fome"></a>
+        <div class="lado-meio">
+          <h1>${titulo}</h1>
+          <p>${texto}</p>
+          <ul class="beneficios">
+            <li>${icone('check', 18, 3)} O cliente pede pelo tablet da mesa, sem app e sem QR Code</li>
+            <li>${icone('check', 18, 3)} A cozinha recebe na hora, com aviso de pedido atrasado</li>
+            <li>${icone('check', 18, 3)} A conta fecha com taxa, divisão e troco já calculados</li>
+          </ul>
         </div>
-        <h1>${titulo}</h1><p>${texto}</p></div>
-      <div class="formulario">${conteudo}</div>
+        <div class="comanda-papel comanda-login" aria-hidden="true"><div class="cp-cab"><b>Mesa 04</b><span>agora</span></div><div class="cp-num">Pedido 128 · chegou na cozinha</div><ul><li><b>2×</b> Burger clássico<small>sem cebola</small></li><li><b>1×</b> Batata frita</li></ul></div>
+      </aside>
+      <main class="formulario">${conteudo}
+        <nav class="rodape-login"><a href="/">Voltar ao site</a><a href="/termos" target="_blank">Termos de uso</a><a href="/privacidade" target="_blank">Privacidade</a></nav>
+      </main>
     </div>`;
     return raiz.querySelector('form');
   }
 
-  const botaoGoogle = (modo, texto) => info.google ? `<a class="btn btn-google" href="/auth/google?modo=${modo}">${texto}</a><div class="ou">ou</div>` : '';
+  const botaoGoogle = (modo, texto) => info.google ? `<a class="btn btn-google" href="/auth/google?modo=${modo}"><span class="g-icone">${icone('escudo', 18, 2)}</span><span>${texto}</span>${icone('seta', 16, 2.5)}</a><div class="ou">ou com e-mail</div>` : '';
 
   function telaLogin(msg) {
     const erroHash = (location.hash.match(/^#erro=([a-z-]+)/) || [])[1];
     if (erroHash) { msg = { tipo: 'erro', texto: ERROS_HASH[erroHash] || 'Não foi possível entrar.' }; history.replaceState(null, '', '/admin'); }
     const f = telaAcesso(`<form id="f">
-      <img src="/img/logo.png" alt="Deu Fome" style="height:60px;margin:0 auto 4px">
-      <h2>Entrar no painel</h2>
+      <div class="form-cab"><h2>Entrar no painel</h2><p>Use a conta do seu restaurante.</p></div>
       ${msg ? `<div class="aviso-form ${msg.tipo}">${esc(msg.texto)}</div>` : ''}
-      ${botaoGoogle('entrar', 'Entrar com Google')}
+      ${botaoGoogle('entrar', 'Continuar com Google')}
       <label class="campo">E-mail<input name="email" type="email" required autocomplete="username"></label>
-      <label class="campo">Senha<input name="senha" type="password" required autocomplete="current-password"></label>
-      <button class="btn btn-azul" style="height:54px">Entrar</button>
-      <div class="links"><button type="button" class="link" id="esqueci">Esqueci minha senha</button>${info.cadastro ? '<a href="/cadastro">Criar conta grátis</a>' : ''}</div>
+      <label class="campo"><span class="campo-linha">Senha<button type="button" class="link" id="esqueci">Esqueci minha senha</button></span><span class="senha-campo"><input name="senha" type="password" required autocomplete="current-password"><button type="button" class="ver-senha" aria-label="Mostrar senha">${icone('olho', 18, 2)}</button></span></label>
+      <button class="btn btn-azul btn-entrar">Entrar</button>
+      ${info.cadastro ? '<p class="troca-tela">Ainda não usa o Deu Fome? <a href="/cadastro">Criar conta grátis</a></p>' : ''}
       ${info.demo ? '<div class="dica"><b>Modo demonstração</b><br>admin@cantinho.test, senha 123456, PIN do tablet 1234<br>Cozinha: cozinha@cantinho.test · Caixa: caixa@cantinho.test</div>' : ''}
     </form>`);
     f.querySelector('#esqueci').onclick = () => telaEsqueci(f.email.value);
+    f.querySelector('.ver-senha').onclick = () => { f.senha.type = f.senha.type === 'password' ? 'text' : 'password'; f.senha.focus(); };
     f.onsubmit = async e => {
       e.preventDefault();
       const b = f.querySelector('button.btn-azul'); b.disabled = true;
@@ -122,7 +134,7 @@ import DF from './comum.js';
       <h2>Esqueci minha senha</h2>
       <p class="sutil" style="margin:0">Digite o e-mail da sua conta. Vamos enviar um link para você criar uma senha nova.</p>
       <label class="campo">E-mail<input name="email" type="email" required autocomplete="username" value="${esc(email)}"></label>
-      <button class="btn btn-azul" style="height:54px">Enviar link</button>
+      <button class="btn btn-azul btn-entrar">Enviar link</button>
       <div class="links"><button type="button" class="link" id="voltar">Voltar para o login</button></div>
     </form>`);
     f.querySelector('#voltar').onclick = () => telaLogin();
@@ -141,7 +153,7 @@ import DF from './comum.js';
       <h2>Criar nova senha</h2>
       <label class="campo">Nova senha<input name="senha" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
       <label class="campo">Repita a nova senha<input name="senha2" type="password" required minlength="8" autocomplete="new-password"></label>
-      <button class="btn btn-azul" style="height:54px">Salvar nova senha</button>
+      <button class="btn btn-azul btn-entrar">Salvar nova senha</button>
     </form>`);
     f.onsubmit = async e => {
       e.preventDefault();
@@ -163,22 +175,22 @@ import DF from './comum.js';
     if (!info.cadastro) return telaLogin({ tipo: 'erro', texto: 'O cadastro de novos restaurantes está fechado no momento.' });
     let pend = null;
     if (location.hash === '#google') { try { pend = await api('/api/cadastro/google'); } catch {} }
-    const textos = { titulo: 'Seu restaurante pedindo pelo tablet hoje.', texto: 'Crie a conta, monte o cardápio e ative os tablets das mesas. Grátis durante o beta.' };
+    const textos = { titulo: 'Seu restaurante pedindo pelo tablet hoje.', texto: 'Crie a conta e o painel guia você: mesas, cardápio, aparência e o primeiro tablet.' };
     const f = telaAcesso(pend ? `<form id="f" class="largo">
       <h2>Falta pouco</h2>
       <div class="aviso-form ok">Conta Google confirmada: <b>${esc(pend.email)}</b></div>
       <label class="campo">Seu nome<input name="nome" required maxlength="60" value="${esc(pend.nome || '')}"></label>
       ${camposRestaurante}
-      <button class="btn btn-azul" style="height:54px">Criar restaurante</button>
+      <button class="btn btn-azul btn-entrar">Criar restaurante</button>
     </form>` : `<form id="f" class="largo">
-      <h2>Criar conta</h2>
-      ${botaoGoogle('cadastro', 'Cadastrar com Google')}
+      <div class="form-cab"><h2>Criar sua conta</h2><p>Grátis durante o beta. Leva menos de um minuto.</p></div>
+      ${botaoGoogle('cadastro', 'Criar conta com Google')}
       <div class="dupla"><label class="campo">Seu nome<input name="nome" required maxlength="60" autocomplete="name"></label>
       <label class="campo">E-mail<input name="email" type="email" required autocomplete="email"></label></div>
       <label class="campo">Senha<input name="senha" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
       ${camposRestaurante}
-      <button class="btn btn-azul" style="height:54px">Criar conta</button>
-      <div class="links"><a href="/admin">Já tenho conta</a></div>
+      <button class="btn btn-azul btn-entrar">Criar conta grátis</button>
+      <p class="troca-tela">Já tem conta? <a href="/admin">Entrar</a></p>
     </form>`, textos);
     f.onsubmit = async e => {
       e.preventDefault();
@@ -186,7 +198,7 @@ import DF from './comum.js';
       const b = f.querySelector('.btn-azul'); b.disabled = true;
       try {
         await api(pend ? '/api/cadastro/google' : '/api/cadastro', { metodo: 'POST', dados: { ...d, aceite: !!d.aceite } });
-        history.replaceState(null, '', '/admin#salao');
+        history.replaceState(null, '', '/admin#inicio');
         iniciar();
       } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
     };
@@ -199,7 +211,7 @@ import DF from './comum.js';
       <div class="barra-movel"><button id="abrirMenu" aria-label="Abrir menu">${icone('menu', 24, 2.2)}</button><img src="/img/logo.png" alt="Deu Fome"><span>${esc(eu.estabelecimento || 'Administração')}</span></div>
       <aside id="menuLateral">
         <div class="marca"><img src="/img/icone-escuro.png" alt=""><div><b>Deu Fome</b><span class="beta">Beta</span><small>${esc(eu.estabelecimento || 'Administração')}</small></div></div>
-        <nav class="navegacao">${abas.map(a => `${GRUPOS[a] ? `<div class="grupo">${GRUPOS[a]}</div>` : ''}<button data-aba="${a}">${icone(ABAS[a][1], 20, 2)} <span>${ABAS[a][0]}</span><span class="contador oculto" data-contador="${a}"></span></button>`).join('')}
+        <nav class="navegacao">${abas.map((a, i) => `${GRUPOS[a] && GRUPOS[a] !== GRUPOS[abas[i - 1]] ? `<div class="grupo">${GRUPOS[a]}</div>` : ''}<button data-aba="${a}">${icone(ABAS[a][1], 20, 2)} <span>${ABAS[a][0]}</span><span class="contador oculto" data-contador="${a}"></span></button>`).join('')}
         ${eu.papel !== 'plataforma' ? `<div class="grupo">Telas</div>
           <a href="/cozinha" target="_blank" rel="noopener">${icone('chef', 20, 2)} Abrir cozinha</a>
           <a href="/tablet" target="_blank" rel="noopener">${icone('tablet', 20, 2)} Abrir tablet</a>` : ''}</nav>
@@ -268,6 +280,103 @@ import DF from './comum.js';
     return m;
   }
 
+
+  /* ------------------------------------------------------------ INÍCIO DO RESTAURANTE */
+  const STATUS_PEDIDO = { recebido: ['Novo', ''], preparo: ['Em preparo', 'amarelo'], pronto: ['Pronto', 'verde'], entregue: ['Entregue', 'cinza'], cancelado: ['Cancelado', 'vermelho'] };
+  const hojePorExtenso = () => new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' });
+  const kpi = (rotulo, valor, detalhe, { icone: ic, tom = '' } = {}) => `<div class="kpi ${tom}"><div class="kpi-topo"><span>${rotulo}</span>${ic ? `<i>${icone(ic, 18, 2)}</i>` : ''}</div><b>${valor}</b><small>${detalhe}</small></div>`;
+
+  async function inicio() {
+    let r;
+    try { r = await api('/api/inicio'); } catch (er) { return falhou(er); }
+    if (aba !== 'inicio') return;
+    const hora = new Date().getHours();
+    const saudacao = hora < 12 ? 'Bom dia' : hora < 18 ? 'Boa tarde' : 'Boa noite';
+    const ini = r.inicio;
+    const passos = [
+      [ini.mesas > 0, 'Cadastre as mesas', 'Quantas mesas o salão tem.', 'mesas'],
+      [ini.produtos > 0, 'Monte o cardápio', 'Categorias, produtos, fotos e adicionais.', 'cardapio'],
+      [ini.pin, 'Defina o PIN dos tablets', '4 números para sair do modo quiosque.', 'ajustes'],
+      [ini.personalizado, 'Personalize o tablet', 'Logo, cor, foto e Wi-Fi na tela inicial.', 'aparencia'],
+      [ini.tablets > 0, 'Ative o primeiro tablet', 'Gere o código e digite no tablet da mesa.', 'dispositivos'],
+    ];
+    const feitos = passos.filter(x => x[0]).length;
+    const proximo = passos.find(x => !x[0]);
+    const st = r.horario;
+    const situacao = !st.controle ? '' : st.aberto ? '<span class="chip verde"><span class="ponto"></span>Aberto agora</span>' : `<span class="chip vermelho"><span class="ponto"></span>Fechado${st.proxima ? ', abre ' + esc(st.proxima) : ''}</span>`;
+    const h = r.hoje, ontem = h.ontem_mesma_hora;
+    const delta = ontem ? Math.round((h.vendas - ontem) / ontem * 100) : null;
+    const comparacao = delta === null ? 'Ontem neste horário: sem vendas' : `<span class="delta ${delta >= 0 ? 'sobe' : 'desce'}">${delta >= 0 ? '+' : ''}${delta}%</span> em relação a ontem neste horário`;
+    const c = r.cozinha;
+    const horas = r.por_hora.map((v, i) => ({ h: i, v }));
+    const primeira = Math.min(horas.findIndex(x => x.v) === -1 ? 11 : horas.findIndex(x => x.v), 11);
+    const visiveis = horas.slice(primeira, Math.max(hora + 1, 23 - 0) + 1);
+    main().innerHTML = `<div class="inicio-cab"><div><h1>${saudacao}, ${esc(r.saudacao)}</h1><p><span class="data-hoje">${hojePorExtenso()}</span>${situacao}</p></div>
+        <div class="acoes-topo"><a class="btn btn-borda" href="/cozinha" target="_blank" rel="noopener">${icone('chef', 18, 2)} Abrir cozinha</a><button class="btn btn-azul" data-ir="salao">${icone('mesa', 18, 2)} Ver o salão</button></div></div>`
+      + (feitos < passos.length ? `<section class="primeiros-passos"><div class="pp-cab"><div><h2>Vamos deixar tudo pronto</h2><span>${feitos} de ${passos.length} passos feitos. Próximo: <b>${proximo[1]}</b></span></div><button class="btn btn-azul" data-ir="${proximo[3]}">Continuar ${icone('seta', 18, 3)}</button></div>
+        <div class="pp-barra"><i style="width:${Math.round(feitos / passos.length * 100)}%"></i></div>
+        <ol>${passos.map(([ok, t, d, a], i) => `<li class="${ok ? 'feito' : ''}" data-ir="${a}"><span class="pp-check">${ok ? icone('check', 16, 3) : i + 1}</span><div><b>${t}</b><small>${d}</small></div></li>`).join('')}</ol></section>` : '')
+      + (r.salao.chamados ? `<div class="alerta-linha amarelo">${icone('sino', 20, 2)}<span><b>${r.salao.chamados} ${r.salao.chamados === 1 ? 'chamado aberto' : 'chamados abertos'}</b> no salão.</span><button class="btn btn-p btn-borda" data-ir="salao">Atender</button></div>` : '')
+      + (c.atrasados ? `<div class="alerta-linha vermelho">${icone('relogio', 20, 2)}<span><b>${c.atrasados} ${c.atrasados === 1 ? 'pedido atrasado' : 'pedidos atrasados'}</b> na cozinha (mais de ${c.atraso_min} min).</span><a class="btn btn-p btn-borda" href="/cozinha" target="_blank" rel="noopener">Ver cozinha</a></div>` : '')
+      + `<div class="kpis">
+          ${kpi('Vendas hoje', real(h.vendas), comparacao, { icone: 'caixa', tom: 'destaque' })}
+          ${kpi('Pedidos hoje', h.pedidos, h.contas ? `${h.contas} ${h.contas === 1 ? 'conta fechada' : 'contas fechadas'} · ticket ${real(h.ticket_medio)}` : 'Nenhuma conta fechada ainda', { icone: 'sacola' })}
+          ${kpi('Mesas ocupadas', `${r.salao.ocupadas}<small> de ${r.salao.mesas}</small>`, r.salao.em_aberto ? `${real(r.salao.em_aberto)} em contas abertas` : 'Nenhuma conta aberta', { icone: 'mesa' })}
+          ${kpi('Avaliação', r.avaliacao.media !== null ? `${String(r.avaliacao.media).replace('.', ',')}<small> de 5</small>` : '—', r.avaliacao.total ? `${r.avaliacao.total} avaliações nos últimos 7 dias` : 'Sem avaliações nos últimos 7 dias', { icone: 'estrela' })}
+        </div>
+        <div class="paineis paineis-inicio">
+          <div class="painel largo-2"><h3>Movimento de hoje</h3><p>Pedidos feitos em cada hora. A barra forte é a hora atual.</p>
+            ${graficoBarras(visiveis, { altura: 160, rotulo: d => d.h + 'h', valor: d => d.v, formatar: v => v + (v === 1 ? ' pedido' : ' pedidos'), destaque: d => d.h === hora })}</div>
+          <div class="painel"><h3>Agora na cozinha</h3><p>Atualiza sozinho.</p>
+            <div class="trio"><div><b>${c.recebido}</b><span>Novos</span></div><div class="amarelo"><b>${c.preparo}</b><span>Em preparo</span></div><div class="verde"><b>${c.pronto}</b><span>Prontos</span></div></div>
+            <div class="mini-linha">${icone('tablet', 16, 2)} ${r.tablets.ativos ? `${r.tablets.online} de ${r.tablets.ativos} tablets online` : 'Nenhum tablet ativado'}<button class="link" data-ir="dispositivos">Ver tablets</button></div></div>
+          <div class="painel largo"><h3>Últimos pedidos</h3>
+            ${r.ultimos.length ? `<ul class="lista-pedidos">${r.ultimos.map(o => `<li><b>${esc(o.mesa)}</b><span class="sutil">Pedido ${o.numero} · há ${tempo(segundosDesde(o.created_at))}</span><span class="chip ${STATUS_PEDIDO[o.status]?.[1] || ''}">${STATUS_PEDIDO[o.status]?.[0] || o.status}</span><span class="preco">${real(o.total)}</span></li>`).join('')}</ul>`
+              : `<div class="vazio-mini">${icone('cardapio', 28, 2)}<span>Os pedidos feitos nos tablets aparecem aqui.</span></div>`}</div>
+        </div>`;
+    main().onclick = e => { const ir = e.target.closest('[data-ir]'); if (ir) mudarAba(ir.dataset.ir); };
+  }
+
+  /* ------------------------------------------------------------ VISÃO GERAL DA PLATAFORMA */
+  async function visao() {
+    let r;
+    try { r = await api('/api/plataforma/resumo'); } catch (er) { return falhou(er); }
+    if (aba !== 'visao') return;
+    const sv = r.servicos;
+    const servico = (ok, nome, okTxt, faltaTxt) => `<li class="${ok ? 'ok' : 'falta'}"><span class="sv-ponto">${icone(ok ? 'check' : 'alerta', 14, 3)}</span><div><b>${nome}</b><small>${ok ? okTxt : faltaTxt}</small></div></li>`;
+    const dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
+    main().innerHTML = cabecalho('Visão geral', `<span class="data-hoje">${hojePorExtenso()}</span> · tudo o que acontece no Deu Fome`, `<button class="btn btn-azul" data-ir="estabelecimentos">${icone('loja', 18, 2)} Estabelecimentos</button>`)
+      + (!sv.volume ? `<div class="alerta-linha vermelho">${icone('alerta', 20, 2)}<span><b>Sem volume no Railway.</b> Os dados serão apagados no próximo deploy.</span></div>` : '')
+      + (r.erros_abertos ? `<div class="alerta-linha vermelho">${icone('alerta', 20, 2)}<span><b>${r.erros_abertos} ${r.erros_abertos === 1 ? 'erro novo' : 'erros novos'}</b> registrados.</span><button class="btn btn-p btn-borda" data-ir="erros">Ver erros</button></div>` : '')
+      + (r.sugestoes_novas ? `<div class="alerta-linha amarelo">${icone('balao', 20, 2)}<span><b>${r.sugestoes_novas} ${r.sugestoes_novas === 1 ? 'sugestão nova' : 'sugestões novas'}</b> dos restaurantes.</span><button class="btn btn-p btn-borda" data-ir="sugestoes">Ler</button></div>` : '')
+      + `<div class="kpis">
+          ${kpi('Restaurantes ativos', r.restaurantes, r.novos_7d ? `${r.novos_7d} ${r.novos_7d === 1 ? 'novo' : 'novos'} nos últimos 7 dias` : 'Nenhum novo nos últimos 7 dias', { icone: 'loja', tom: 'destaque' })}
+          ${kpi('Pedidos em 30 dias', r.pedidos_30d.toLocaleString('pt-BR'), 'Feitos pelos tablets de todos os restaurantes', { icone: 'sacola' })}
+          ${kpi('Movimentado em 30 dias', real(r.faturado_30d), 'Contas fechadas nos restaurantes', { icone: 'caixa' })}
+          ${kpi('Tablets online', `${r.tablets.online}<small> de ${r.tablets.ativos}</small>`, 'Tablets ativos que deram sinal no último minuto e meio', { icone: 'tablet' })}
+        </div>
+        <div class="paineis paineis-inicio">
+          <div class="painel largo-2"><h3>Pedidos por dia</h3><p>Últimos 14 dias, todos os restaurantes.</p>
+            ${graficoBarras(r.pedidos_por_dia, { altura: 160, rotulo: d => dm(d.dia), valor: d => d.pedidos, formatar: v => v + ' pedidos' })}</div>
+          <div class="painel"><h3>Serviços</h3><p>O que está ligado no servidor.</p>
+            <ul class="servicos">
+              ${servico(sv.volume, 'Volume de dados', 'Banco e fotos guardados com segurança', 'Adicione um volume em /data no Railway')}
+              ${servico(sv.email, 'E-mail (Brevo)', 'Boas-vindas, senha e backup por e-mail', 'Configure BREVO_API_KEY e EMAIL_REMETENTE')}
+              ${servico(sv.google, 'Login com Google', 'Botão "Continuar com Google" ativo', 'Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET')}
+              ${servico(!!sv.backup, 'Backup diário', sv.backup ? 'Último: ' + dataHora(sv.backup) : '', 'Ainda não foi feito')}
+              ${servico(sv.cadastro, 'Cadastro aberto', 'Restaurantes podem criar conta sozinhos', 'Só você cadastra restaurantes')}
+            </ul></div>
+          <div class="painel largo"><h3>Restaurantes mais recentes</h3><p>Acompanhe se cada um já está pronto para usar.</p>
+            ${r.recentes.length ? `<ul class="lista-restaurantes">${r.recentes.map(t => {
+              const prontos = [t.mesas > 0, t.produtos > 0, t.tablets > 0].filter(Boolean).length;
+              return `<li><div><b>${esc(t.nome)}</b><small class="sutil">${esc(t.dono_email || '—')} · desde ${new Date(t.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('pt-BR')}</small></div>
+                <span class="etapas" title="Mesas, cardápio e tablets">${['Mesas', 'Cardápio', 'Tablets'].map((n, i) => `<i class="${[t.mesas, t.produtos, t.tablets][i] > 0 ? 'on' : ''}">${n}</i>`).join('')}</span>
+                ${t.status !== 'ativo' ? '<span class="chip vermelho">Bloqueado</span>' : prontos === 3 ? '<span class="chip verde">Em uso</span>' : '<span class="chip amarelo">Configurando</span>'}</li>`;
+            }).join('')}</ul>` : `<div class="vazio-mini">${icone('loja', 28, 2)}<span>Nenhum restaurante ainda.</span></div>`}</div>
+        </div>`;
+    main().onclick = e => { const ir = e.target.closest('[data-ir]'); if (ir) mudarAba(ir.dataset.ir); };
+  }
+
   /* ------------------------------------------------------------ PLATAFORMA */
   async function estabelecimentos() {
     let r;
@@ -310,19 +419,7 @@ import DF from './comum.js';
     if (aba !== 'salao') return;
     const chamados = r.mesas.flatMap(m => m.chamados.map(c => ({ ...c, mesa: m })));
     const ocupadas = r.mesas.filter(m => m.sessao).length;
-    const ini = r.inicio;
-    const passos = ini && ['dono', 'gerente'].includes(eu.papel) ? [
-      [ini.mesas > 0, 'Cadastre as mesas', 'Diga quantas mesas o salão tem.', 'mesas'],
-      [ini.produtos > 0, 'Monte o cardápio', 'Categorias, produtos, fotos e adicionais.', 'cardapio'],
-      [ini.pin, 'Defina o PIN dos tablets', '4 números para o gerente sair do modo quiosque.', 'ajustes'],
-      [ini.tablets > 0, 'Ative o primeiro tablet', 'Gere o código e digite no tablet da mesa.', 'dispositivos'],
-    ] : [];
-    const feitos = passos.filter(p => p[0]).length;
     main().innerHTML = cabecalho('Salão e contas', `${ocupadas} de ${r.mesas.length} mesas ocupadas`)
-      + (passos.length && feitos < passos.length ? `<section class="primeiros-passos"><div class="pp-cab"><h2>Primeiros passos</h2><span>${feitos} de ${passos.length} prontos</span></div>
-        <div class="pp-barra"><i style="width:${Math.round(feitos / passos.length * 100)}%"></i></div>
-        <ol>${passos.map(([ok, t, d, a]) => `<li class="${ok ? 'feito' : ''}"><span class="pp-check">${ok ? icone('check', 16, 3) : ''}</span><div><b>${t}</b><small>${d}</small></div>${ok ? '' : `<button class="btn btn-p btn-borda" data-ir="${a}">Fazer agora</button>`}</li>`).join('')}</ol>
-        <p class="sutil">Depois, deixe o tablet com a cara do restaurante em <button class="link" data-ir="aparencia">Personalizar</button>.</p></section>` : '')
       + (chamados.length ? `<div class="chamados"><b style="margin-right:6px">${icone('sino', 20)} Chamados</b>${chamados.map(c => `
         <span class="chip ${c.tipo === 'conta' ? 'vermelho' : 'amarelo'}">${esc(c.mesa.nome)}: ${c.tipo === 'conta' ? 'pediu a conta' : 'chamou o garçom'}, há ${tempo(segundosDesde(c.created_at))}</span>
         ${c.tipo === 'garcom' ? `<button class="btn btn-p btn-claro" data-atender="${c.id}">Atendido</button>` : `<button class="btn btn-p btn-marinho" data-comanda="${c.mesa.sessao?.id || ''}">Abrir comanda</button>`}`).join('')}</div>` : '')
@@ -671,6 +768,7 @@ import DF from './comum.js';
           <div class="dupla"><label class="campo">Categoria<select name="categoria_id">${cats.map(c => `<option value="${c.id}" ${c.id == p.categoria_id ? 'selected' : ''}>${esc(c.nome)}</option>`).join('')}</select></label>
           <label class="campo">Preço (R$)<input name="preco" inputmode="decimal" required placeholder="0,00" value="${p.preco != null ? paraReais(p.preco) : ''}"></label></div>
           <label class="campo">Descrição<textarea name="descricao" maxlength="300" rows="3" placeholder="Ingredientes, tamanho, porção…">${esc(p.descricao || '')}</textarea></label>
+          <label class="campo">Selo no tablet<select name="selo"><option value="">Nenhum</option>${Object.entries(SELOS).map(([k, v]) => `<option value="${k}" ${p.selo === k ? 'selected' : ''}>${v}</option>`).join('')}</select></label>
           <label class="liga"><input type="checkbox" name="disponivel" ${p.disponivel === false ? '' : 'checked'}> Disponível para pedir</label>
         </div>
       </div>
@@ -690,7 +788,7 @@ import DF from './comum.js';
           if (pa === null) throw new Error(`Preço inválido no adicional "${a.nome}".`);
           lista.push({ id: a.id, nome: a.nome, preco: pa });
         }
-        const dados = { nome: d.nome, descricao: d.descricao, preco, categoria_id: Number(d.categoria_id), disponivel: !!d.disponivel, adicionais: lista };
+        const dados = { nome: d.nome, descricao: d.descricao, preco, categoria_id: Number(d.categoria_id), disponivel: !!d.disponivel, selo: d.selo || '', adicionais: lista };
         let id = p.id;
         if (novo) id = (await api('/api/produtos', { metodo: 'POST', dados })).id;
         else await api(`/api/produtos/${id}`, { metodo: 'POST', dados });

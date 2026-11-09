@@ -8,6 +8,7 @@ use App\Http\Controllers\Painel\ConfiguracaoController;
 use App\Http\Controllers\Painel\CozinhaController;
 use App\Http\Controllers\Painel\DispositivoController;
 use App\Http\Controllers\Painel\EquipeController;
+use App\Http\Controllers\Painel\InicioController;
 use App\Http\Controllers\Painel\MesaController;
 use App\Http\Controllers\Painel\RelatorioController;
 use App\Http\Controllers\Painel\SalaoController;
@@ -67,6 +68,7 @@ Route::middleware('papel:dono,gerente,caixa')->group(function () {
 // Gestão do restaurante (dono e gerente)
 Route::middleware('papel:dono,gerente')->group(function () {
     Route::get('relatorios', [RelatorioController::class, 'relatorios']);
+    Route::get('inicio', [InicioController::class, 'resumo']);
 
     Route::controller(DispositivoController::class)->group(function () {
         Route::get('dispositivos', 'listar');
@@ -114,6 +116,7 @@ Route::middleware('papel:dono,gerente')->group(function () {
 
 // Administrador do Deu Fome
 Route::middleware('papel:plataforma')->prefix('plataforma')->controller(PlataformaController::class)->group(function () {
+    Route::get('resumo', 'resumo');
     Route::get('estabelecimentos', 'estabelecimentos');
     Route::post('estabelecimentos', 'criar');
     Route::post('estabelecimentos/{id}', 'salvar')->whereNumber('id');
