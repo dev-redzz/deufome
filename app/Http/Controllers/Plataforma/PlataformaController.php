@@ -28,35 +28,47 @@ class PlataformaController extends Controller
 
     public function resumo()
     {
-        $d30 = gmdate('Y-m-d H:i:s', time() - 30 * 86400);
         $d7 = gmdate('Y-m-d H:i:s', time() - 7 * 86400);
+        $d30 = gmdate('Y-m-d H:i:s', time() - 30 * 86400);
         $porDia = [];
-        for ($i = 13; $i >= 0; $i--) {
+        for ($i = 29; $i >= 0; $i--) {
             $porDia[gmdate('Y-m-d', time() - $i * 86400)] = 0;
         }
-        foreach (DB::select("SELECT substr(created_at, 1, 10) AS dia, COUNT(*) AS n FROM orders WHERE created_at >= ? AND status <> 'cancelado' GROUP BY dia", [gmdate('Y-m-d', time() - 13 * 86400)]) as $l) {
+        foreach (DB::select('SELECT substr(created_at, 1, 10) AS dia, COUNT(*) AS n FROM tenants WHERE created_at >= ? GROUP BY dia', [gmdate('Y-m-d', time() - 29 * 86400)]) as $l) {
             if (isset($porDia[$l['dia']])) {
                 $porDia[$l['dia']] = (int) $l['n'];
             }
         }
-        $online = 0;
-        foreach (DB::select("SELECT last_seen_at FROM devices WHERE status = 'ativo'") as $x) {
-            $online += \App\Services\Atendimento::online($x['last_seen_at']) ? 1 : 0;
+        $lista = DB::select("SELECT t.id, t.nome, t.status, t.created_at,
+            (SELECT email FROM users u WHERE u.tenant_id = t.id AND u.papel = 'dono' ORDER BY u.id LIMIT 1) AS dono_email,
+            (SELECT COUNT(*) FROM tables m WHERE m.tenant_id = t.id AND m.ativo = 1) AS mesas,
+            (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS produtos,
+            (SELECT COUNT(*) FROM devices d WHERE d.tenant_id = t.id AND d.status = 'ativo') AS tablets,
+            (SELECT MAX(last_seen_at) FROM devices d WHERE d.tenant_id = t.id) AS ultimo_sinal
+            FROM tenants t ORDER BY t.id DESC");
+        $emUso = $configurando = 0;
+        $ajuda = [];
+        foreach ($lista as $t) {
+            $pronto = $t['mesas'] > 0 && $t['produtos'] > 0 && $t['tablets'] > 0;
+            if ($t['status'] !== 'ativo') {
+                continue;
+            }
+            $pronto ? $emUso++ : $configurando++;
+            if (! $pronto && $t['created_at'] < gmdate('Y-m-d H:i:s', time() - 2 * 86400)) {
+                $ajuda[] = $t;
+            }
         }
         $b = DB::selectOne("SELECT ultima_em FROM tarefas WHERE nome = 'backup'");
 
         return response()->json([
-            'restaurantes' => (int) DB::scalar("SELECT COUNT(*) FROM tenants WHERE status = 'ativo'"),
-            'bloqueados' => (int) DB::scalar("SELECT COUNT(*) FROM tenants WHERE status <> 'ativo'"),
-            'novos_7d' => (int) DB::scalar('SELECT COUNT(*) FROM tenants WHERE created_at >= ?', [$d7]),
-            'pedidos_30d' => (int) DB::scalar("SELECT COUNT(*) FROM orders WHERE created_at >= ? AND status <> 'cancelado'", [$d30]),
-            'faturado_30d' => (int) DB::scalar("SELECT COALESCE(SUM(total),0) FROM table_sessions WHERE status = 'fechada' AND fechada_em >= ?", [$d30]),
-            'tablets' => ['ativos' => (int) DB::scalar("SELECT COUNT(*) FROM devices WHERE status = 'ativo'"), 'online' => $online],
-            'pedidos_por_dia' => array_map(fn ($d, $n) => ['dia' => $d, 'pedidos' => $n], array_keys($porDia), $porDia),
-            'recentes' => DB::select("SELECT t.id, t.nome, t.status, t.created_at, (SELECT email FROM users u WHERE u.tenant_id = t.id AND u.papel = 'dono' ORDER BY u.id LIMIT 1) AS dono_email,
-                (SELECT COUNT(*) FROM tables m WHERE m.tenant_id = t.id AND m.ativo = 1) AS mesas, (SELECT COUNT(*) FROM products p WHERE p.tenant_id = t.id) AS produtos,
-                (SELECT COUNT(*) FROM devices d WHERE d.tenant_id = t.id AND d.status = 'ativo') AS tablets
-                FROM tenants t ORDER BY t.id DESC LIMIT 6"),
+            'restaurantes' => ['ativos' => (int) DB::scalar("SELECT COUNT(*) FROM tenants WHERE status = 'ativo'"), 'bloqueados' => (int) DB::scalar("SELECT COUNT(*) FROM tenants WHERE status <> 'ativo'"),
+                'em_uso' => $emUso, 'configurando' => $configurando],
+            'cadastros' => ['d7' => (int) DB::scalar('SELECT COUNT(*) FROM tenants WHERE created_at >= ?', [$d7]), 'd30' => (int) DB::scalar('SELECT COUNT(*) FROM tenants WHERE created_at >= ?', [$d30])],
+            'usuarios' => ['total' => (int) DB::scalar("SELECT COUNT(*) FROM users WHERE papel <> 'plataforma' AND ativo = 1"), 'google' => (int) DB::scalar('SELECT COUNT(*) FROM users WHERE google_sub IS NOT NULL')],
+            'tablets_ativados' => (int) DB::scalar("SELECT COUNT(*) FROM devices WHERE status = 'ativo'"),
+            'cadastros_por_dia' => array_map(fn ($d, $n) => ['dia' => $d, 'n' => $n], array_keys($porDia), $porDia),
+            'recentes' => array_slice($lista, 0, 6),
+            'precisam_ajuda' => array_slice($ajuda, 0, 6),
             'erros_abertos' => (int) DB::scalar('SELECT COUNT(*) FROM erros WHERE resolvido = 0'),
             'sugestoes_novas' => (int) DB::scalar('SELECT COUNT(*) FROM sugestoes WHERE lida = 0'),
             'servicos' => ['email' => Email::configurado(), 'google' => GoogleController::configurado(), 'cadastro' => CadastroController::aberto(), 'volume' => ! sem_volume(),

@@ -31,10 +31,10 @@ import DF from './comum.js';
     conta: ['Minha senha', 'cadeado', () => ajustes()],
   };
   const ABAS_POR_PAPEL = {
-    plataforma: ['visao', 'estabelecimentos', 'sistema', 'sugestoes', 'erros', 'conta'],
+    plataforma: ['visao', 'estabelecimentos', 'sistema', 'sugestoes', 'erros'],
     dono: ['inicio', 'salao', 'caixa', 'relatorios', 'cardapio', 'mesas', 'dispositivos', 'aparencia', 'equipe', 'ajustes'],
     gerente: ['inicio', 'salao', 'caixa', 'relatorios', 'cardapio', 'mesas', 'dispositivos', 'aparencia', 'equipe', 'ajustes'],
-    caixa: ['salao', 'caixa', 'conta'],
+    caixa: ['salao', 'caixa'],
   };
   const GRUPOS = { inicio: 'No dia a dia', salao: 'No dia a dia', relatorios: 'Resultados', cardapio: 'Seu restaurante', visao: 'Plataforma', conta: 'Sua conta' };
   const FORMAS = { pix: 'Pix', dinheiro: 'Dinheiro', credito: 'Crédito', debito: 'Débito', dividido: 'Dividido' };
@@ -60,11 +60,20 @@ import DF from './comum.js';
     'bloqueado': 'Este estabelecimento está bloqueado. Fale com o suporte do Deu Fome.',
   };
 
-  function aplicarTema(t) {
-    document.documentElement.dataset.tema = t;
-    try { localStorage.setItem('deufome_tema', t); } catch {}
+  const escuroDoSistema = matchMedia('(prefers-color-scheme: dark)');
+  let temaEscolhido = 'claro';
+  function pintarTema() {
+    document.documentElement.dataset.tema = temaEscolhido === 'auto' ? (escuroDoSistema.matches ? 'escuro' : 'claro') : temaEscolhido;
+    document.querySelectorAll('[data-tema-op]').forEach(b => b.classList.toggle('marcado', b.dataset.temaOp === temaEscolhido));
   }
-  try { const t = localStorage.getItem('deufome_tema'); if (t === 'escuro') document.documentElement.dataset.tema = 'escuro'; } catch {}
+  function aplicarTema(t) {
+    temaEscolhido = t;
+    try { localStorage.setItem('deufome_tema', t); } catch {}
+    pintarTema();
+  }
+  try { temaEscolhido = localStorage.getItem('deufome_tema') || 'claro'; } catch {}
+  pintarTema();
+  escuroDoSistema.addEventListener?.('change', pintarTema);
 
   function abertura() {
     try { if (sessionStorage.getItem('deufome_abertura')) return; sessionStorage.setItem('deufome_abertura', '1'); } catch { return; }
@@ -77,51 +86,46 @@ import DF from './comum.js';
     document.body.appendChild(a);
   }
 
-  function telaAcesso(conteudo, { titulo = 'Bem-vindo de volta.', texto = 'Acompanhe o salão, a cozinha e os tablets das mesas em um só lugar.' } = {}) {
+  function telaAcesso(conteudo, { texto = 'Pedidos pelo tablet da mesa, cozinha e caixa do seu restaurante em um só lugar.' } = {}) {
     clearInterval(timer);
     raiz.innerHTML = `<div class="login">
       <aside class="lado">
-        <a class="marca-login" href="/"><img src="/img/logo.png" alt="Deu Fome"></a>
-        <div class="lado-meio">
-          <h1>${titulo}</h1>
+        <div class="marca-grande">
+          <img src="/img/icone-escuro.png" alt="">
+          <b>Deu <span>Fome</span></b>
           <p>${texto}</p>
-          <ul class="beneficios">
-            <li>${icone('check', 18, 3)} O cliente pede pelo tablet da mesa, sem app e sem QR Code</li>
-            <li>${icone('check', 18, 3)} A cozinha recebe na hora, com aviso de pedido atrasado</li>
-            <li>${icone('check', 18, 3)} A conta fecha com taxa, divisão e troco já calculados</li>
-          </ul>
         </div>
-        <div class="comanda-papel comanda-login" aria-hidden="true"><div class="cp-cab"><b>Mesa 04</b><span>agora</span></div><div class="cp-num">Pedido 128 · chegou na cozinha</div><ul><li><b>2×</b> Burger clássico<small>sem cebola</small></li><li><b>1×</b> Batata frita</li></ul></div>
       </aside>
       <main class="formulario">${conteudo}
-        <nav class="rodape-login"><a href="/">Voltar ao site</a><a href="/termos" target="_blank">Termos de uso</a><a href="/privacidade" target="_blank">Privacidade</a></nav>
+        <nav class="rodape-login"><a href="/">Conheça o Deu Fome</a><a href="/termos" target="_blank">Termos de uso</a><a href="/privacidade" target="_blank">Privacidade</a></nav>
       </main>
     </div>`;
     return raiz.querySelector('form');
   }
 
-  const botaoGoogle = (modo, texto) => info.google ? `<a class="btn btn-google" href="/auth/google?modo=${modo}"><span class="g-icone">${icone('escudo', 18, 2)}</span><span>${texto}</span>${icone('seta', 16, 2.5)}</a><div class="ou">ou com e-mail</div>` : '';
+  const botaoGoogle = (modo, texto) => info.google ? `<div class="ou">ou</div><a class="btn btn-google" href="/auth/google?modo=${modo}">${icone('escudo', 18, 2)}<span>${texto}</span></a>` : '';
 
   function telaLogin(msg) {
     const erroHash = (location.hash.match(/^#erro=([a-z-]+)/) || [])[1];
     if (erroHash) { msg = { tipo: 'erro', texto: ERROS_HASH[erroHash] || 'Não foi possível entrar.' }; history.replaceState(null, '', '/admin'); }
     const f = telaAcesso(`<form id="f">
-      <div class="form-cab"><h2>Entrar no painel</h2><p>Use a conta do seu restaurante.</p></div>
+      <div class="form-cab"><h2>Entrar</h2><p>Acesse a conta do seu restaurante.</p></div>
       ${msg ? `<div class="aviso-form ${msg.tipo}">${esc(msg.texto)}</div>` : ''}
-      ${botaoGoogle('entrar', 'Continuar com Google')}
       <label class="campo">E-mail<input name="email" type="email" required autocomplete="username"></label>
-      <label class="campo"><span class="campo-linha">Senha<button type="button" class="link" id="esqueci">Esqueci minha senha</button></span><span class="senha-campo"><input name="senha" type="password" required autocomplete="current-password"><button type="button" class="ver-senha" aria-label="Mostrar senha">${icone('olho', 18, 2)}</button></span></label>
+      <label class="campo">Senha<span class="senha-campo"><input name="senha" type="password" required autocomplete="current-password"><button type="button" class="ver-senha">Mostrar</button></span></label>
+      <div class="linha-opcoes"><label class="lembrar"><input type="checkbox" name="lembrar" checked> Manter conectado</label><button type="button" class="link" id="esqueci">Esqueci minha senha</button></div>
       <button class="btn btn-azul btn-entrar">Entrar</button>
-      ${info.cadastro ? '<p class="troca-tela">Ainda não usa o Deu Fome? <a href="/cadastro">Criar conta grátis</a></p>' : ''}
+      ${botaoGoogle('entrar', 'Entrar com Google')}
+      ${info.cadastro ? '<p class="troca-tela">Ainda não tem conta? <a href="/cadastro">Criar conta</a></p>' : ''}
       ${info.demo ? '<div class="dica"><b>Modo demonstração</b><br>admin@cantinho.test, senha 123456, PIN do tablet 1234<br>Cozinha: cozinha@cantinho.test · Caixa: caixa@cantinho.test</div>' : ''}
     </form>`);
     f.querySelector('#esqueci').onclick = () => telaEsqueci(f.email.value);
-    f.querySelector('.ver-senha').onclick = () => { f.senha.type = f.senha.type === 'password' ? 'text' : 'password'; f.senha.focus(); };
+    f.querySelector('.ver-senha').onclick = e => { const ver = f.senha.type === 'password'; f.senha.type = ver ? 'text' : 'password'; e.currentTarget.textContent = ver ? 'Ocultar' : 'Mostrar'; f.senha.focus(); };
     f.onsubmit = async e => {
       e.preventDefault();
       const b = f.querySelector('button.btn-azul'); b.disabled = true;
       try {
-        const r = await api('/api/login', { metodo: 'POST', dados: Object.fromEntries(new FormData(f)) });
+        const r = await api('/api/login', { metodo: 'POST', dados: { email: f.email.value, senha: f.senha.value, lembrar: f.lembrar.checked } });
         if (r.papel === 'cozinha' || new URLSearchParams(location.search).get('voltar') === '/cozinha') return location.href = '/cozinha';
         history.replaceState(null, '', '/admin');
         iniciar();
@@ -175,7 +179,7 @@ import DF from './comum.js';
     if (!info.cadastro) return telaLogin({ tipo: 'erro', texto: 'O cadastro de novos restaurantes está fechado no momento.' });
     let pend = null;
     if (location.hash === '#google') { try { pend = await api('/api/cadastro/google'); } catch {} }
-    const textos = { titulo: 'Seu restaurante pedindo pelo tablet hoje.', texto: 'Crie a conta e o painel guia você: mesas, cardápio, aparência e o primeiro tablet.' };
+    const textos = { texto: 'Crie a conta e o painel guia você: mesas, cardápio, aparência e o primeiro tablet.' };
     const f = telaAcesso(pend ? `<form id="f" class="largo">
       <h2>Falta pouco</h2>
       <div class="aviso-form ok">Conta Google confirmada: <b>${esc(pend.email)}</b></div>
@@ -183,13 +187,13 @@ import DF from './comum.js';
       ${camposRestaurante}
       <button class="btn btn-azul btn-entrar">Criar restaurante</button>
     </form>` : `<form id="f" class="largo">
-      <div class="form-cab"><h2>Criar sua conta</h2><p>Grátis durante o beta. Leva menos de um minuto.</p></div>
-      ${botaoGoogle('cadastro', 'Criar conta com Google')}
+      <div class="form-cab"><h2>Criar conta</h2><p>Grátis durante o beta. Leva menos de um minuto.</p></div>
       <div class="dupla"><label class="campo">Seu nome<input name="nome" required maxlength="60" autocomplete="name"></label>
       <label class="campo">E-mail<input name="email" type="email" required autocomplete="email"></label></div>
       <label class="campo">Senha<input name="senha" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
       ${camposRestaurante}
       <button class="btn btn-azul btn-entrar">Criar conta grátis</button>
+      ${botaoGoogle('cadastro', 'Criar conta com Google')}
       <p class="troca-tela">Já tem conta? <a href="/admin">Entrar</a></p>
     </form>`, textos);
     f.onsubmit = async e => {
@@ -207,37 +211,99 @@ import DF from './comum.js';
   /* ------------------------------------------------------------ LAYOUT */
   function layout() {
     const abas = ABAS_POR_PAPEL[eu.papel] || [];
+    const gestor = ['dono', 'gerente'].includes(eu.papel);
+    const inicial = (eu.nome || '?').trim().charAt(0).toUpperCase();
+    const papel = PAPEIS[eu.papel]?.[0] || 'Administrador';
     raiz.innerHTML = `<div class="admin">
-      <div class="barra-movel"><button id="abrirMenu" aria-label="Abrir menu">${icone('menu', 24, 2.2)}</button><img src="/img/logo.png" alt="Deu Fome"><span>${esc(eu.estabelecimento || 'Administração')}</span></div>
       <aside id="menuLateral">
-        <div class="marca"><img src="/img/icone-escuro.png" alt=""><div><b>Deu Fome</b><span class="beta">Beta</span><small>${esc(eu.estabelecimento || 'Administração')}</small></div></div>
+        <div class="marca"><img src="/img/icone-escuro.png" alt=""><div><b>Deu Fome</b><span class="beta">Beta</span><small class="nome-estab">${esc(eu.estabelecimento || 'Administração')}</small></div></div>
         <nav class="navegacao">${abas.map((a, i) => `${GRUPOS[a] && GRUPOS[a] !== GRUPOS[abas[i - 1]] ? `<div class="grupo">${GRUPOS[a]}</div>` : ''}<button data-aba="${a}">${icone(ABAS[a][1], 20, 2)} <span>${ABAS[a][0]}</span><span class="contador oculto" data-contador="${a}"></span></button>`).join('')}
         ${eu.papel !== 'plataforma' ? `<div class="grupo">Telas</div>
           <a href="/cozinha" target="_blank" rel="noopener">${icone('chef', 20, 2)} Abrir cozinha</a>
           <a href="/tablet" target="_blank" rel="noopener">${icone('tablet', 20, 2)} Abrir tablet</a>` : ''}</nav>
-        <div class="fim">
-          <div class="rodape-acoes">
-            <button id="tema" title="Tema claro ou escuro">${document.documentElement.dataset.tema === 'escuro' ? icone('sol', 18, 2) + ' Claro' : icone('lua', 18, 2) + ' Escuro'}</button>
-            ${eu.papel !== 'plataforma' ? `<button id="sugerir" title="Enviar sugestão">${icone('balao', 18, 2)} Sugestão</button>` : ''}
-          </div>
-          <div class="quem">${esc(eu.nome)}<small>${esc(PAPEIS[eu.papel]?.[0] || 'Administrador do Deu Fome')}</small></div><button id="sair">${icone('sair', 20, 2)} Sair</button></div>
       </aside>
-      <main id="main"></main>
+      <div class="area">
+        <header class="topo-painel">
+          <button class="icone-topo menu-movel" id="abrirMenu" aria-label="Abrir menu">${icone('menu', 22, 2.2)}</button>
+          <span class="topo-titulo nome-estab">${esc(eu.estabelecimento || 'Administração')}</span>
+          <div class="topo-dir">
+            <div class="suspenso">
+              <button class="icone-topo" id="sinoBtn" aria-label="Avisos" aria-expanded="false">${icone('sino', 20, 2)}<span class="bolinha oculto" id="sinoN"></span></button>
+              <div class="painel-suspenso avisos oculto" id="sinoMenu"><div class="ps-cab">Avisos</div><div id="listaAvisos"><p class="ps-vazio">Nenhum aviso agora.</p></div></div>
+            </div>
+            <div class="suspenso">
+              <button class="usuario-btn" id="usuarioBtn" aria-expanded="false"><span class="avatar">${esc(inicial)}</span><span class="usuario-txt"><b>${esc(eu.nome)}</b><small>${esc(papel)}</small></span>${icone('seta', 16, 2.5)}</button>
+              <div class="painel-suspenso menu-usuario oculto" id="usuarioMenu">
+                <div class="mu-cab"><span class="avatar grande">${esc(inicial)}</span><div><b>${esc(eu.nome)}</b><small>${esc(eu.email)}</small><small>${esc(papel)}${eu.estabelecimento ? ' · ' + esc(eu.estabelecimento) : ' · Deu Fome'}</small></div></div>
+                <div class="mu-bloco"><span class="mu-rotulo">Tema</span>
+                  <div class="segmentado tema-seg"><button data-tema-op="claro">${icone('sol', 16, 2)} Claro</button><button data-tema-op="escuro">${icone('lua', 16, 2)} Escuro</button><button data-tema-op="auto">${icone('tablet', 16, 2)} Auto</button></div></div>
+                <div class="mu-bloco mu-itens">
+                  ${eu.papel !== 'plataforma' ? `<button data-mu="sugestao">${icone('balao', 18, 2)} Enviar sugestão</button>` : ''}
+                  ${gestor ? `<button data-mu="equipe">${icone('pessoas', 18, 2)} Equipe</button><button data-mu="ajustes">${icone('engrenagem', 18, 2)} Configurações</button>` : ''}
+                  ${eu.papel === 'plataforma' ? `<button data-mu="sistema">${icone('escudo', 18, 2)} Sistema e backup</button>` : ''}
+                  <button data-mu="senha">${icone('cadeado', 18, 2)} Minha senha</button>
+                </div>
+                <div class="mu-bloco mu-itens"><button data-mu="sair" class="perigo">${icone('sair', 18, 2)} Sair</button></div>
+              </div>
+            </div>
+          </div>
+        </header>
+        <main id="main"></main>
+      </div>
     </div>`;
-    raiz.querySelector('aside').addEventListener('click', e => { const b = e.target.closest('[data-aba]'); if (b) { mudarAba(b.dataset.aba); raiz.querySelector('.admin').classList.remove('menu-aberto'); } });
-    raiz.querySelector('#abrirMenu').onclick = () => raiz.querySelector('.admin').classList.toggle('menu-aberto');
-    raiz.querySelector('#sair').onclick = async () => { await api('/api/logout', { metodo: 'POST' }).catch(() => {}); location.href = '/admin'; };
-    raiz.querySelector('#tema').onclick = () => { aplicarTema(document.documentElement.dataset.tema === 'escuro' ? 'claro' : 'escuro'); layoutRodape(); };
-    raiz.querySelector('#sugerir')?.addEventListener('click', sugestaoModal);
+    const admin = raiz.querySelector('.admin');
+    raiz.querySelector('aside').addEventListener('click', e => { const b = e.target.closest('[data-aba]'); if (b) { mudarAba(b.dataset.aba); admin.classList.remove('menu-aberto'); } });
+    raiz.querySelector('#abrirMenu').onclick = () => admin.classList.toggle('menu-aberto');
+    admin.addEventListener('click', e => { if (e.target === admin) admin.classList.remove('menu-aberto'); });
+    const alternar = (btn, menu) => {
+      const abrir = menu.classList.contains('oculto');
+      raiz.querySelectorAll('.painel-suspenso').forEach(m => m.classList.add('oculto'));
+      raiz.querySelectorAll('[aria-expanded]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+      if (abrir) { menu.classList.remove('oculto'); btn.setAttribute('aria-expanded', 'true'); }
+    };
+    raiz.querySelector('#usuarioBtn').onclick = e => { e.stopPropagation(); alternar(e.currentTarget, raiz.querySelector('#usuarioMenu')); };
+    raiz.querySelector('#sinoBtn').onclick = e => { e.stopPropagation(); alternar(e.currentTarget, raiz.querySelector('#sinoMenu')); };
+    document.addEventListener('click', e => { if (!e.target.closest('.suspenso')) raiz.querySelectorAll('.painel-suspenso').forEach(m => m.classList.add('oculto')); });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') raiz.querySelectorAll('.painel-suspenso').forEach(m => m.classList.add('oculto')); });
+    raiz.querySelector('#usuarioMenu').addEventListener('click', async e => {
+      const t = e.target.closest('[data-tema-op]'); if (t) return aplicarTema(t.dataset.temaOp);
+      const b = e.target.closest('[data-mu]'); if (!b) return;
+      raiz.querySelector('#usuarioMenu').classList.add('oculto');
+      const acao = b.dataset.mu;
+      if (acao === 'sair') { await api('/api/logout', { metodo: 'POST' }).catch(() => {}); location.href = '/admin'; }
+      if (acao === 'sugestao') sugestaoModal();
+      if (acao === 'senha') trocarSenhaModal();
+      if (['equipe', 'ajustes', 'sistema'].includes(acao)) mudarAba(acao);
+    });
+    raiz.querySelector('#sinoMenu').addEventListener('click', e => { const a = e.target.closest('[data-ir-aviso]'); if (a) { raiz.querySelector('#sinoMenu').classList.add('oculto'); mudarAba(a.dataset.irAviso); } });
+    pintarTema();
     const hash = location.hash.slice(1);
     mudarAba(abas.includes(hash) ? hash : abas[0]);
     if (eu.papel === 'plataforma') atualizarContadores();
+    atualizarAvisos();
+    setInterval(() => { if (document.visibilityState === 'visible') atualizarAvisos(); }, 20000);
   }
 
-  function layoutRodape() {
-    const b = raiz.querySelector('#tema');
-    if (b) b.innerHTML = document.documentElement.dataset.tema === 'escuro' ? icone('sol', 18, 2) + ' Claro' : icone('lua', 18, 2) + ' Escuro';
+  async function atualizarAvisos() {
+    let r;
+    try { r = await api('/api/avisos'); } catch { return; }
+    const n = r.avisos.length;
+    const bolinha = raiz.querySelector('#sinoN'); if (!bolinha) return;
+    bolinha.textContent = n; bolinha.classList.toggle('oculto', !n);
+    const ic = { garcom: 'sino', conta: 'conta', atraso: 'relogio', erro: 'alerta', sugestao: 'balao' };
+    raiz.querySelector('#listaAvisos').innerHTML = n ? r.avisos.map(a => `<button class="aviso-item ${a.tipo}" data-ir-aviso="${a.aba}"><span>${icone(ic[a.tipo] || 'sino', 18, 2)}</span><div><b>${esc(a.texto)}</b>${a.quando ? `<small>há ${tempo(segundosDesde(a.quando))}</small>` : ''}</div></button>`).join('') : '<p class="ps-vazio">Nenhum aviso agora.</p>';
   }
+
+  function trocarSenhaModal() {
+    formulario('Minha senha', `<label class="campo">Senha atual<input name="atual" type="password" required autocomplete="current-password"></label>
+      <label class="campo">Nova senha<input name="nova" type="password" required minlength="8" autocomplete="new-password" placeholder="mínimo 8 caracteres"></label>
+      <p class="sutil" style="margin:0">Se você entra com o Google e não sabe a senha atual, use "Esqueci minha senha" na tela de login.</p>`, {
+      enviar: 'Trocar senha',
+      aoEnviar: async d => { await api('/api/minha-senha', { metodo: 'POST', dados: d }); toast('Senha trocada.'); },
+    });
+  }
+
+  function layoutRodape() {}
 
   async function atualizarContadores() {
     try {
@@ -342,39 +408,50 @@ import DF from './comum.js';
     let r;
     try { r = await api('/api/plataforma/resumo'); } catch (er) { return falhou(er); }
     if (aba !== 'visao') return;
-    const sv = r.servicos;
+    const sv = r.servicos, rs = r.restaurantes;
     const servico = (ok, nome, okTxt, faltaTxt) => `<li class="${ok ? 'ok' : 'falta'}"><span class="sv-ponto">${icone(ok ? 'check' : 'alerta', 14, 3)}</span><div><b>${nome}</b><small>${ok ? okTxt : faltaTxt}</small></div></li>`;
     const dm = d => d.slice(8, 10) + '/' + d.slice(5, 7);
-    main().innerHTML = cabecalho('Visão geral', `<span class="data-hoje">${hojePorExtenso()}</span> · tudo o que acontece no Deu Fome`, `<button class="btn btn-azul" data-ir="estabelecimentos">${icone('loja', 18, 2)} Estabelecimentos</button>`)
-      + (!sv.volume ? `<div class="alerta-linha vermelho">${icone('alerta', 20, 2)}<span><b>Sem volume no Railway.</b> Os dados serão apagados no próximo deploy.</span></div>` : '')
-      + (r.erros_abertos ? `<div class="alerta-linha vermelho">${icone('alerta', 20, 2)}<span><b>${r.erros_abertos} ${r.erros_abertos === 1 ? 'erro novo' : 'erros novos'}</b> registrados.</span><button class="btn btn-p btn-borda" data-ir="erros">Ver erros</button></div>` : '')
-      + (r.sugestoes_novas ? `<div class="alerta-linha amarelo">${icone('balao', 20, 2)}<span><b>${r.sugestoes_novas} ${r.sugestoes_novas === 1 ? 'sugestão nova' : 'sugestões novas'}</b> dos restaurantes.</span><button class="btn btn-p btn-borda" data-ir="sugestoes">Ler</button></div>` : '')
+    const etapas = t => `<span class="etapas" title="Mesas, cardápio e tablets">${['Mesas', 'Cardápio', 'Tablets'].map((n, i) => `<i class="${[t.mesas, t.produtos, t.tablets][i] > 0 ? 'on' : ''}">${n}</i>`).join('')}</span>`;
+    const desde = t => new Date(t.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('pt-BR');
+    const pendencias = [];
+    if (!sv.volume) pendencias.push(['vermelho', 'alerta', '<b>Sem volume no Railway.</b> Os dados serão apagados no próximo deploy.', '']);
+    if (r.erros_abertos) pendencias.push(['vermelho', 'alerta', `<b>${r.erros_abertos} ${r.erros_abertos === 1 ? 'erro novo' : 'erros novos'}</b> registrados no sistema.`, 'erros']);
+    if (r.sugestoes_novas) pendencias.push(['amarelo', 'balao', `<b>${r.sugestoes_novas} ${r.sugestoes_novas === 1 ? 'sugestão nova' : 'sugestões novas'}</b> dos restaurantes.`, 'sugestoes']);
+    main().innerHTML = cabecalho('Visão geral', `<span class="data-hoje">${hojePorExtenso()}</span> · cadastros, uso e saúde do sistema`, `<button class="btn btn-azul" data-ir="estabelecimentos">${icone('mais', 18, 3)} Novo estabelecimento</button>`)
+      + pendencias.map(([tom, ic, txt, ir]) => `<div class="alerta-linha ${tom}">${icone(ic, 20, 2)}<span>${txt}</span>${ir ? `<button class="btn btn-p btn-borda" data-ir="${ir}">Ver</button>` : ''}</div>`).join('')
       + `<div class="kpis">
-          ${kpi('Restaurantes ativos', r.restaurantes, r.novos_7d ? `${r.novos_7d} ${r.novos_7d === 1 ? 'novo' : 'novos'} nos últimos 7 dias` : 'Nenhum novo nos últimos 7 dias', { icone: 'loja', tom: 'destaque' })}
-          ${kpi('Pedidos em 30 dias', r.pedidos_30d.toLocaleString('pt-BR'), 'Feitos pelos tablets de todos os restaurantes', { icone: 'sacola' })}
-          ${kpi('Movimentado em 30 dias', real(r.faturado_30d), 'Contas fechadas nos restaurantes', { icone: 'caixa' })}
-          ${kpi('Tablets online', `${r.tablets.online}<small> de ${r.tablets.ativos}</small>`, 'Tablets ativos que deram sinal no último minuto e meio', { icone: 'tablet' })}
+          ${kpi('Restaurantes ativos', rs.ativos, `${rs.em_uso} em uso · ${rs.configurando} configurando${rs.bloqueados ? ` · ${rs.bloqueados} bloqueados` : ''}`, { icone: 'loja', tom: 'destaque' })}
+          ${kpi('Novos cadastros', r.cadastros.d7, `nos últimos 7 dias · ${r.cadastros.d30} em 30 dias`, { icone: 'mais' })}
+          ${kpi('Pessoas com acesso', r.usuarios.total, `donos, gerentes, caixas e cozinha · ${r.usuarios.google} entram com Google`, { icone: 'pessoas' })}
+          ${kpi('Tablets ativados', r.tablets_ativados, 'Em todos os restaurantes', { icone: 'tablet' })}
         </div>
         <div class="paineis paineis-inicio">
-          <div class="painel largo-2"><h3>Pedidos por dia</h3><p>Últimos 14 dias, todos os restaurantes.</p>
-            ${graficoBarras(r.pedidos_por_dia, { altura: 160, rotulo: d => dm(d.dia), valor: d => d.pedidos, formatar: v => v + ' pedidos' })}</div>
+          <div class="painel largo-2"><h3>Cadastros por dia</h3><p>Restaurantes criados nos últimos 30 dias.</p>
+            ${graficoBarras(r.cadastros_por_dia, { altura: 160, rotulo: d => dm(d.dia), valor: d => d.n, formatar: v => v + (v === 1 ? ' cadastro' : ' cadastros') })}</div>
           <div class="painel"><h3>Serviços</h3><p>O que está ligado no servidor.</p>
             <ul class="servicos">
               ${servico(sv.volume, 'Volume de dados', 'Banco e fotos guardados com segurança', 'Adicione um volume em /data no Railway')}
               ${servico(sv.email, 'E-mail (Brevo)', 'Boas-vindas, senha e backup por e-mail', 'Configure BREVO_API_KEY e EMAIL_REMETENTE')}
-              ${servico(sv.google, 'Login com Google', 'Botão "Continuar com Google" ativo', 'Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET')}
+              ${servico(sv.google, 'Login com Google', 'Botão "Entrar com Google" ativo', 'Configure GOOGLE_CLIENT_ID e GOOGLE_CLIENT_SECRET')}
               ${servico(!!sv.backup, 'Backup diário', sv.backup ? 'Último: ' + dataHora(sv.backup) : '', 'Ainda não foi feito')}
               ${servico(sv.cadastro, 'Cadastro aberto', 'Restaurantes podem criar conta sozinhos', 'Só você cadastra restaurantes')}
             </ul></div>
-          <div class="painel largo"><h3>Restaurantes mais recentes</h3><p>Acompanhe se cada um já está pronto para usar.</p>
+          <div class="painel"><h3>Precisam de ajuda</h3><p>Criaram a conta há mais de 2 dias e ainda não terminaram de configurar.</p>
+            ${r.precisam_ajuda.length ? `<ul class="lista-ajuda">${r.precisam_ajuda.map(t => `<li><div><b>${esc(t.nome)}</b>${etapas(t)}</div>${t.dono_email ? `<a class="btn btn-p btn-borda" href="mailto:${esc(t.dono_email)}?subject=${encodeURIComponent('Precisa de ajuda com o Deu Fome?')}">${icone('balao', 14, 2)} Falar</a>` : ''}</li>`).join('')}</ul>`
+              : `<div class="vazio-mini">${icone('check', 24, 2.5)}<span>Ninguém parado na configuração.</span></div>`}</div>
+          <div class="painel largo-2"><h3>Cadastros recentes</h3><p>Os últimos restaurantes e o que cada um já configurou.</p>
             ${r.recentes.length ? `<ul class="lista-restaurantes">${r.recentes.map(t => {
               const prontos = [t.mesas > 0, t.produtos > 0, t.tablets > 0].filter(Boolean).length;
-              return `<li><div><b>${esc(t.nome)}</b><small class="sutil">${esc(t.dono_email || '—')} · desde ${new Date(t.created_at.replace(' ', 'T') + 'Z').toLocaleDateString('pt-BR')}</small></div>
-                <span class="etapas" title="Mesas, cardápio e tablets">${['Mesas', 'Cardápio', 'Tablets'].map((n, i) => `<i class="${[t.mesas, t.produtos, t.tablets][i] > 0 ? 'on' : ''}">${n}</i>`).join('')}</span>
+              return `<li><div><b>${esc(t.nome)}</b><small class="sutil">${esc(t.dono_email || '—')} · desde ${desde(t)}${t.ultimo_sinal ? ' · tablet visto há ' + tempo(segundosDesde(t.ultimo_sinal)) : ''}</small></div>
+                ${etapas(t)}
                 ${t.status !== 'ativo' ? '<span class="chip vermelho">Bloqueado</span>' : prontos === 3 ? '<span class="chip verde">Em uso</span>' : '<span class="chip amarelo">Configurando</span>'}</li>`;
             }).join('')}</ul>` : `<div class="vazio-mini">${icone('loja', 28, 2)}<span>Nenhum restaurante ainda.</span></div>`}</div>
         </div>`;
-    main().onclick = e => { const ir = e.target.closest('[data-ir]'); if (ir) mudarAba(ir.dataset.ir); };
+    main().onclick = e => {
+      const ir = e.target.closest('[data-ir]'); if (!ir) return;
+      mudarAba(ir.dataset.ir);
+      if (ir.textContent.includes('Novo estabelecimento')) setTimeout(() => main().querySelector('#novo')?.click(), 400);
+    };
   }
 
   /* ------------------------------------------------------------ PLATAFORMA */
@@ -903,7 +980,7 @@ import DF from './comum.js';
       e.preventDefault();
       const d = Object.fromEntries(new FormData(fE));
       if (d.pin && !/^\d{4}$/.test(d.pin)) return toast('O PIN precisa ter 4 números.', 'erro');
-      try { await api('/api/config', { metodo: 'POST', dados: { ...d, taxa_servico: Number(d.taxa_servico) } }); toast('Configurações salvas.'); if (d.pin) ajustes(); eu.estabelecimento = d.nome; raiz.querySelectorAll('.marca small, .barra-movel span').forEach(el => el.textContent = d.nome); fE.pin.value = ''; } catch (er) { falhou(er); }
+      try { await api('/api/config', { metodo: 'POST', dados: { ...d, taxa_servico: Number(d.taxa_servico) } }); toast('Configurações salvas.'); if (d.pin) ajustes(); eu.estabelecimento = d.nome; raiz.querySelectorAll('.nome-estab').forEach(el => el.textContent = d.nome); fE.pin.value = ''; } catch (er) { falhou(er); }
     });
     const fH = main().querySelector('#fHorario');
     if (fH) {

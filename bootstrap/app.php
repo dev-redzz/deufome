@@ -25,10 +25,12 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware): void {
         $middleware->trustProxies(at: '*');
         $middleware->append(CabecalhosSeguranca::class);
+        $middleware->web(append: [\App\Http\Middleware\ManterConectado::class]);
         $middleware->api(prepend: [
             EncryptCookies::class,
             AddQueuedCookiesToResponse::class,
             StartSession::class,
+            \App\Http\Middleware\ManterConectado::class,
             ProtegerApi::class,
             TarefasDiarias::class,
         ]);

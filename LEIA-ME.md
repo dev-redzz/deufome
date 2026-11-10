@@ -1,4 +1,4 @@
-# Deu Fome — versão 2.1 (Laravel)
+# Deu Fome — versão 2.2 (Laravel)
 
 Plataforma de pedidos com um tablet fixo em cada mesa. Vários restaurantes usam o mesmo site, cada um com seus dados separados.
 

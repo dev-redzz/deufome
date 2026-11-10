@@ -54,7 +54,7 @@ class AppServiceProvider extends ServiceProvider
                 'session.cookie' => $seguro ? '__Host-deufome' : 'deufome_sessao',
                 'session.same_site' => 'lax',
                 'session.http_only' => true,
-                'session.lifetime' => 720,
+                'session.lifetime' => 43200,
                 'session.path' => '/',
                 'session.domain' => null,
             ]);

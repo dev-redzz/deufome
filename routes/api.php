@@ -44,6 +44,7 @@ Route::middleware('papel')->group(function () {
     Route::get('me', [SessaoController::class, 'eu']);
     Route::post('minha-senha', [SessaoController::class, 'minhaSenha']);
     Route::post('sugestoes', [SugestaoController::class, 'criar']);
+    Route::get('avisos', [\App\Http\Controllers\AvisoController::class, 'listar']);
 });
 
 // Cozinha

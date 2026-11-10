@@ -37,6 +37,7 @@ class SessaoController extends Controller
             DB::update('UPDATE users SET senha_hash = ? WHERE id = ?', [password_hash($senha, PASSWORD_DEFAULT), $u['id']]);
         }
         self::entrarComo((int) $u['id']);
+        $request->session()->put('lembrar', ! empty($in['lembrar']));
 
         return response()->json(['ok' => true, 'papel' => $u['papel']]);
     }
