@@ -79,9 +79,65 @@ class CardapioController extends Controller
         return $s;
     }
 
+    private static function tamanhos($lista): string
+    {
+        if (! is_array($lista) || count($lista) > 6) {
+            erro(422, 'Use até 6 tamanhos.');
+        }
+        $r = [];
+        foreach ($lista as $t) {
+            $nome = texto((array) $t, 'nome', 20, true, 'Nome do tamanho');
+            if (in_array($nome, array_column($r, 'nome'), true)) {
+                erro(422, "O tamanho $nome está repetido.");
+            }
+            $r[] = ['nome' => $nome, 'preco' => centavos($t['preco'] ?? null, "Preço do tamanho $nome")];
+        }
+
+        return json_encode($r, JSON_UNESCAPED_UNICODE);
+    }
+
+    private static function sugestoes(int $tid, $lista): string
+    {
+        $ids = array_slice(array_values(array_unique(array_map('intval', (array) $lista))), 0, 3);
+        foreach ($ids as $i) {
+            self::produto($tid, $i);
+        }
+
+        return json_encode($ids);
+    }
+
+    /** Campos novos do produto (tamanhos, meio a meio, combina com). */
+    private static function extras(int $tid, array $in, array $atual = []): array
+    {
+        $r = [];
+        if (array_key_exists('tamanhos', $in)) {
+            $r['tamanhos'] = self::tamanhos($in['tamanhos']);
+        }
+        if (array_key_exists('meio_a_meio', $in)) {
+            $r['meio_a_meio'] = $in['meio_a_meio'] ? 1 : 0;
+        }
+        if (array_key_exists('sugestoes', $in)) {
+            $r['sugestoes'] = self::sugestoes($tid, $in['sugestoes']);
+        }
+
+        return $r;
+    }
+
+    private static function setor(array $in): ?string
+    {
+        if (! array_key_exists('setor', $in)) {
+            return null;
+        }
+        if (! isset(Cardapio::SETORES[$in['setor']])) {
+            erro(422, 'Setor inválido.');
+        }
+
+        return $in['setor'];
+    }
+
     public function listar()
     {
-        return response()->json(['categorias' => Cardapio::montar((int) usuario()['tenant_id']), 'selos' => Cardapio::SELOS]);
+        return response()->json(['categorias' => Cardapio::montar((int) usuario()['tenant_id']), 'selos' => Cardapio::SELOS, 'setores' => Cardapio::SETORES]);
     }
 
     public function criarProduto()
@@ -97,7 +153,7 @@ class CardapioController extends Controller
             $pid = DB::table('products')->insertGetId([
                 'tenant_id' => $tid, 'category_id' => $cat['id'], 'nome' => $nome, 'descricao' => $desc, 'preco' => $preco,
                 'disponivel' => empty($in['disponivel']) && array_key_exists('disponivel', $in) ? 0 : 1, 'ordem' => $ordem, 'selo' => self::selo($in),
-            ]);
+            ] + self::extras($tid, $in));
             self::salvarAdicionais($tid, $pid, $in['adicionais'] ?? []);
 
             return $pid;
@@ -119,6 +175,9 @@ class CardapioController extends Controller
         $selo = self::selo($in, $p['selo']);
         DB::transaction(function () use ($nome, $desc, $preco, $disp, $cat, $p, $in, $tid, $selo) {
             DB::update('UPDATE products SET nome = ?, descricao = ?, preco = ?, disponivel = ?, category_id = ?, selo = ? WHERE id = ?', [$nome, $desc, $preco, $disp, $cat, $selo, $p['id']]);
+            if ($extras = self::extras($tid, $in)) {
+                DB::table('products')->where('id', $p['id'])->update($extras);
+            }
             if (array_key_exists('adicionais', $in)) {
                 self::salvarAdicionais($tid, (int) $p['id'], $in['adicionais']);
             }
@@ -164,8 +223,9 @@ class CardapioController extends Controller
     {
         $tid = (int) usuario()['tenant_id'];
         $nome = texto(entrada(), 'nome', 40);
+        $setor = self::setor(entrada());
         $ordem = (int) DB::scalar('SELECT COALESCE(MAX(ordem), -1) + 1 FROM categories WHERE tenant_id = ?', [$tid]);
-        $id = DB::table('categories')->insertGetId(['tenant_id' => $tid, 'nome' => $nome, 'ordem' => $ordem]);
+        $id = DB::table('categories')->insertGetId(['tenant_id' => $tid, 'nome' => $nome, 'ordem' => $ordem, 'setor' => $setor ?? 'cozinha']);
 
         return response()->json(['ok' => true, 'id' => $id], 201);
     }
@@ -173,7 +233,8 @@ class CardapioController extends Controller
     public function salvarCategoria(string $id)
     {
         $c = self::categoria((int) usuario()['tenant_id'], (int) $id);
-        DB::update('UPDATE categories SET nome = ? WHERE id = ?', [texto(entrada(), 'nome', 40), $c['id']]);
+        $in = entrada();
+        DB::update('UPDATE categories SET nome = ?, setor = ? WHERE id = ?', [array_key_exists('nome', $in) ? texto($in, 'nome', 40) : $c['nome'], self::setor($in) ?? $c['setor'], $c['id']]);
 
         return response()->json(['ok' => true]);
     }

@@ -55,16 +55,27 @@ class DemoSeeder extends Seeder
                 ['Petit Gâteau', 'Bolo de chocolate com recheio cremoso e sorvete.', 2290, 'doce', []],
                 ['Açaí 400 ml', 'Com granola, banana e leite condensado.', 1890, 'acai', [['Nutella', 600], ['Morango', 400]]],
             ],
+            'Pizzas' => [
+                ['Pizza Calabresa', 'Calabresa fatiada, cebola roxa e azeitonas.', 3990, 'pizza', [['Borda de catupiry', 800]]],
+                ['Pizza Frango com Catupiry', 'Frango desfiado temperado e catupiry original.', 4290, 'pizza', [['Borda de catupiry', 800]]],
+                ['Pizza Portuguesa', 'Presunto, ovos, cebola, ervilha e mussarela.', 4490, 'pizza', [['Borda de catupiry', 800]]],
+            ],
         ];
         $oc = 0;
         foreach ($cardapio as $cat => $itens) {
-            $cid = DB::table('categories')->insertGetId(['tenant_id' => $t1, 'nome' => $cat, 'ordem' => $oc++]);
+            $cid = DB::table('categories')->insertGetId(['tenant_id' => $t1, 'nome' => $cat, 'ordem' => $oc++, 'setor' => $cat === 'Bebidas' ? 'bar' : 'cozinha']);
             foreach ($itens as $op => [$nome, $desc, $preco, $img, $opcoes]) {
-                $pid = DB::table('products')->insertGetId(['tenant_id' => $t1, 'category_id' => $cid, 'nome' => $nome, 'descricao' => $desc, 'preco' => $preco, 'imagem' => "/img/produtos/$img.svg", 'ordem' => $op]);
+                $extra = $cat === 'Pizzas' ? ['meio_a_meio' => 1, 'tamanhos' => json_encode([['nome' => 'Média', 'preco' => $preco], ['nome' => 'Grande', 'preco' => $preco + 1200], ['nome' => 'Família', 'preco' => $preco + 2200]], JSON_UNESCAPED_UNICODE)] : [];
+                $pid = DB::table('products')->insertGetId(['tenant_id' => $t1, 'category_id' => $cid, 'nome' => $nome, 'descricao' => $desc, 'preco' => $preco, 'imagem' => "/img/produtos/$img.svg", 'ordem' => $op] + $extra);
                 foreach ($opcoes as [$on, $optPreco]) {
                     DB::insert('INSERT INTO product_options (tenant_id, product_id, nome, preco) VALUES (?,?,?,?)', [$t1, $pid, $on, $optPreco]);
                 }
             }
+        }
+        DB::insert('INSERT INTO cupons (tenant_id, codigo, tipo, valor, minimo, created_at) VALUES (?,?,?,?,?,?)', [$t1, 'BEMVINDO10', 'percentual', 10, 5000, agora()]);
+        DB::insert('INSERT INTO cupons (tenant_id, codigo, tipo, valor, limite, created_at) VALUES (?,?,?,?,?,?)', [$t1, 'SOBREMESA', 'valor', 1500, 100, agora()]);
+        foreach (DB::select('SELECT id, numero FROM tables WHERE tenant_id = ? ORDER BY numero', [$t1]) as $i => $m) {
+            DB::update('UPDATE tables SET pos_x = ?, pos_y = ?, formato = ?, lugares = ? WHERE id = ?', [180 + ($i % 3) * 320, 250 + intdiv($i, 3) * 450, $i % 3 === 1 ? 'redonda' : 'quadrada', $i % 3 === 1 ? 2 : 4, $m['id']]);
         }
         $c2 = DB::table('categories')->insertGetId(['tenant_id' => $t2, 'nome' => 'Pizzas', 'ordem' => 0]);
         DB::insert('INSERT INTO products (tenant_id, category_id, nome, descricao, preco, imagem) VALUES (?,?,?,?,?,?)', [$t2, $c2, 'Pizza Secreta', 'Produto do outro restaurante.', 5000, '/img/produtos/prato.svg']);
@@ -142,6 +153,12 @@ class DemoSeeder extends Seeder
                     $tags = $nota >= 4 ? array_slice($tagsBoas, mt_rand(0, 2), mt_rand(1, 2)) : array_slice($tagsRuins, mt_rand(0, 1), 1);
                     DB::insert('INSERT INTO avaliacoes (tenant_id, session_id, table_id, nota, tags, comentario, created_at) VALUES (?,?,?,?,?,?,?)',
                         [$tid, $sid, $mesa, $nota, json_encode($tags, JSON_UNESCAPED_UNICODE), $comentarios[array_rand($comentarios)], $fmt($fech->modify('-4 minutes'))]);
+                    foreach ($ordens as [, , , , $itens]) {
+                        foreach ($itens as [$p]) {
+                            $np = max(1, min(5, $nota + (str_contains($p['nome'], 'Batata') ? -1 : (str_contains($p['nome'], 'Burger') ? 1 : 0)) + mt_rand(-1, 0)));
+                            DB::insert('INSERT OR IGNORE INTO avaliacoes_itens (tenant_id, session_id, product_id, nome, nota, created_at) VALUES (?,?,?,?,?,?)', [$tid, $sid, $p['id'], $p['nome'], $np, $fmt($fech->modify('-4 minutes'))]);
+                        }
+                    }
                 }
             }
         }

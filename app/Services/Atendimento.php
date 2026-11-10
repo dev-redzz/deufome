@@ -31,7 +31,7 @@ class Atendimento
                 $i['adicionais'] = json_decode($i['adicionais'], true);
 
                 return $i;
-            }, DB::select('SELECT nome, preco_unit, quantidade, adicionais, observacao, subtotal FROM order_items WHERE order_id = ? ORDER BY id', [$p['id']]));
+            }, DB::select('SELECT nome, product_id, preco_unit, quantidade, adicionais, observacao, subtotal, setor FROM order_items WHERE order_id = ? ORDER BY id', [$p['id']]));
         }
 
         return $pedidos;
@@ -40,6 +40,33 @@ class Atendimento
     public static function totalSessao(int $tenantId, string $sessaoId): int
     {
         return (int) DB::scalar("SELECT COALESCE(SUM(total),0) FROM orders WHERE tenant_id = ? AND session_id = ? AND status <> 'cancelado'", [$tenantId, $sessaoId]);
+    }
+
+    /** Valores da conta: subtotal, taxa de serviço, desconto do cupom, gorjeta e total. */
+    public static function conta(array $tenant, array $sessao, bool $cobrarTaxa = true): array
+    {
+        $tid = (int) $tenant['id'];
+        $subtotal = self::totalSessao($tid, $sessao['id']);
+        $pct = max(0, min(30, (int) $tenant['taxa_servico']));
+        $taxa = $cobrarTaxa && $pct > 0 ? (int) round($subtotal * $pct / 100) : 0;
+        $desconto = 0;
+        $cupom = null;
+        if ($sessao['cupom_id'] ?? null) {
+            $c = DB::selectOne('SELECT * FROM cupons WHERE id = ? AND tenant_id = ?', [$sessao['cupom_id'], $tid]);
+            if ($c) {
+                $desconto = Cupons::desconto($c, $subtotal);
+                $cupom = ['codigo' => $c['codigo'], 'descricao' => Cupons::descricao($c), 'minimo' => (int) $c['minimo'], 'aplicado' => $desconto > 0];
+            }
+        }
+        $base = max(0, $subtotal - $desconto);
+        $gpct = (int) ($sessao['gorjeta_pct'] ?? 0);
+        $gorjeta = $gpct > 0 ? (int) round($base * $gpct / 100) : 0;
+
+        return [
+            'subtotal' => $subtotal, 'taxa' => $taxa, 'taxa_pct' => $pct, 'desconto' => $desconto, 'cupom' => $cupom,
+            'gorjeta' => $gorjeta, 'gorjeta_pct' => $gpct, 'pagar_com' => $sessao['pagar_com'] ?? null,
+            'total' => $base + $taxa + $gorjeta,
+        ];
     }
 
     public static function avaliacao(string $sessaoId): ?array

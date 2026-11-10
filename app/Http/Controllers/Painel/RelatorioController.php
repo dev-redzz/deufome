@@ -25,6 +25,8 @@ class RelatorioController extends Controller
             case 'ontem': $de = $hoje->modify('-1 day'); $ate = $de; break;
             case '30d': $de = $hoje->modify('-29 days'); $ate = $hoje; break;
             case 'mes': $de = $hoje->modify('first day of this month'); $ate = $hoje; break;
+            case 'mes_anterior': $de = $hoje->modify('first day of last month'); $ate = $hoje->modify('last day of last month'); break;
+            case 'ano': $de = $hoje->setDate((int) $hoje->format('Y'), 1, 1); $ate = $hoje; break;
             case 'personalizado':
                 $de = $data($in['de'] ?? '');
                 $ate = $data($in['ate'] ?? '');
@@ -82,14 +84,14 @@ class RelatorioController extends Controller
         $fuso = $per['fuso'];
         $intervalo = [$tid, $per['ini'], $per['fim']];
 
-        $contas = DB::select("SELECT s.id, s.table_id, s.aberta_em, s.fechada_em, COALESCE(s.subtotal, s.total) AS subtotal, COALESCE(s.taxa, 0) AS taxa, s.total, COALESCE(s.pessoas, 1) AS pessoas, s.forma_pagamento
+        $contas = DB::select("SELECT s.id, s.table_id, s.aberta_em, s.fechada_em, COALESCE(s.subtotal, s.total) AS subtotal, COALESCE(s.taxa, 0) AS taxa, s.total, COALESCE(s.pessoas, 1) AS pessoas, s.forma_pagamento, s.desconto, s.gorjeta
             FROM table_sessions s WHERE s.tenant_id = ? AND s.status = 'fechada' AND s.fechada_em >= ? AND s.fechada_em < ?", $intervalo);
         $porDia = [];
         for ($i = 0; $i < $per['dias']; $i++) {
             $d = $per['de_dt']->modify("+$i day")->format('Y-m-d');
             $porDia[$d] = ['dia' => $d, 'total' => 0, 'contas' => 0];
         }
-        $faturado = $taxas = $pessoas = $permanencia = 0;
+        $faturado = $taxas = $pessoas = $permanencia = $descontos = $gorjetas = 0;
         $porMesa = [];
         foreach ($contas as $c) {
             $dia = self::local($c['fechada_em'], $fuso)->format('Y-m-d');
@@ -99,6 +101,8 @@ class RelatorioController extends Controller
             }
             $faturado += (int) $c['total'];
             $taxas += (int) $c['taxa'];
+            $descontos += (int) $c['desconto'];
+            $gorjetas += (int) $c['gorjeta'];
             $pessoas += max(1, (int) $c['pessoas']);
             $permanencia += max(0, strtotime($c['fechada_em'].' UTC') - strtotime($c['aberta_em'].' UTC'));
             $porMesa[$c['table_id']] = ['contas' => ($porMesa[$c['table_id']]['contas'] ?? 0) + 1, 'total' => ($porMesa[$c['table_id']]['total'] ?? 0) + (int) $c['total']];
@@ -155,10 +159,17 @@ class RelatorioController extends Controller
         }
         arsort($tags);
 
+        $pratos = DB::select('SELECT nome, ROUND(AVG(nota), 1) AS media, COUNT(*) AS avaliacoes FROM avaliacoes_itens WHERE tenant_id = ? AND created_at >= ? AND created_at < ? GROUP BY nome ORDER BY media DESC, avaliacoes DESC', $intervalo);
+        foreach ($pratos as &$pr) {
+            $pr['media'] = (float) $pr['media'];
+            $pr['avaliacoes'] = (int) $pr['avaliacoes'];
+        }
+        unset($pr);
+
         return response()->json([
             'periodo' => ['tipo' => $per['periodo'], 'de' => $per['de'], 'ate' => $per['ate']],
             'resumo' => [
-                'faturado' => $faturado, 'taxas' => $taxas, 'contas' => $n, 'ticket_medio' => $n ? (int) round($faturado / $n) : 0,
+                'faturado' => $faturado, 'taxas' => $taxas, 'descontos' => $descontos, 'gorjetas' => $gorjetas, 'contas' => $n, 'ticket_medio' => $n ? (int) round($faturado / $n) : 0,
                 'por_pessoa' => $pessoas ? (int) round($faturado / $pessoas) : 0, 'pedidos' => $validos, 'cancelados' => $cancelados,
                 'itens' => $itens, 'permanencia_min' => $n ? (int) round($permanencia / $n / 60) : null,
                 'preparo_min' => $media($tPreparo), 'espera_min' => $media($tEspera),
@@ -168,6 +179,7 @@ class RelatorioController extends Controller
             'produtos' => $produtos,
             'formas' => self::formas($tid, $per['ini'], $per['fim']),
             'mesas' => array_slice($mesas, 0, 10),
+            'pratos' => ['melhores' => array_slice($pratos, 0, 5), 'piores' => count($pratos) > 1 ? array_slice(array_reverse(array_filter($pratos, fn ($p) => $p['media'] < 4)), 0, 5) : []],
             'avaliacoes' => ['media' => count($avs) ? round($soma / count($avs), 1) : null, 'total' => count($avs), 'distribuicao' => $dist, 'tags' => (object) $tags, 'ultimas' => $ultimas],
         ]);
     }

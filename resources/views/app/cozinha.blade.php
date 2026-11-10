@@ -5,6 +5,10 @@
 <header>
   <img src="/img/icone-escuro.png" alt="Deu Fome">
   <h1 id="titulo">Cozinha</h1>
+  <div class="setores" id="setores" role="tablist" aria-label="Setor">
+    <button data-setor="" class="marcado">Tudo</button><button data-setor="cozinha">Cozinha</button><button data-setor="bar">Bar</button>
+  </div>
+  <button class="btn btn-p" id="esgotar">Esgotou algo?</button>
   <button class="btn btn-p" id="autoImp">Impressão automática</button>
   <button class="btn btn-p" id="som">Ativar som</button>
   <span class="relogio" id="relogio"></span>

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Painel;
 use App\Http\Controllers\Controller;
 use App\Services\Atendimento;
 use App\Services\Auditoria;
+use App\Services\Cupons;
 use App\Services\Preferencias;
 use Illuminate\Support\Facades\DB;
 
@@ -14,10 +15,11 @@ class SalaoController extends Controller
     {
         $u = usuario();
         $tid = (int) $u['tenant_id'];
-        $lista = DB::select('SELECT id, numero, nome FROM tables WHERE tenant_id = ? AND ativo = 1 ORDER BY numero', [$tid]);
+        $lista = DB::select('SELECT id, numero, nome, pos_x, pos_y, formato, lugares FROM tables WHERE tenant_id = ? AND ativo = 1 ORDER BY numero', [$tid]);
         foreach ($lista as &$m) {
             $s = Atendimento::sessaoAberta($tid, (int) $m['id']);
-            $m['sessao'] = $s ? ['id' => $s['id'], 'status' => $s['status'], 'aberta_em' => $s['aberta_em'], 'total' => Atendimento::totalSessao($tid, $s['id'])] : null;
+            $m['sessao'] = $s ? ['id' => $s['id'], 'status' => $s['status'], 'aberta_em' => $s['aberta_em'], 'total' => Atendimento::totalSessao($tid, $s['id']), 'pagar_com' => $s['pagar_com'],
+                'atrasado' => (bool) DB::scalar("SELECT 1 FROM orders WHERE session_id = ? AND status IN ('recebido','preparo') AND created_at < ?", [$s['id'], gmdate('Y-m-d H:i:s', time() - 60 * Preferencias::de(Atendimento::tenant($tid))['cozinha_atraso_min'])])] : null;
             $d = DB::selectOne("SELECT id, nome, status, last_seen_at FROM devices WHERE tenant_id = ? AND table_id = ? AND status <> 'bloqueado'", [$tid, $m['id']]);
             $m['tablet'] = $d ? ['nome' => $d['nome'], 'online' => Atendimento::online($d['last_seen_at']), 'status' => $d['status']] : null;
             $m['chamados'] = DB::select("SELECT id, tipo, created_at FROM service_calls WHERE tenant_id = ? AND table_id = ? AND status = 'aberto' ORDER BY id", [$tid, $m['id']]);
@@ -45,6 +47,7 @@ class SalaoController extends Controller
             'sessao' => $s, 'mesa' => DB::scalar('SELECT nome FROM tables WHERE id = ?', [$s['table_id']]), 'estabelecimento' => $t['nome'],
             'pedidos' => Atendimento::pedidosDaSessao($tid, $id), 'total' => Atendimento::totalSessao($tid, $id),
             'taxa_servico' => (int) $t['taxa_servico'],
+            'conta' => Atendimento::conta($t, $s),
             'pagamentos' => DB::select('SELECT forma, valor, created_at FROM payments WHERE session_id = ? ORDER BY id', [$id]),
             'avaliacao' => Atendimento::avaliacao($id),
             'impressao' => ['rodape' => $pref['rodape_comanda'], 'telefone' => $pref['telefone'], 'endereco' => $pref['endereco'], 'instagram' => $pref['instagram']],
@@ -62,10 +65,8 @@ class SalaoController extends Controller
             if (! in_array($s['status'], ['aberta', 'conta_solicitada'], true)) {
                 erro(409, 'Esta conta já foi fechada.');
             }
-            $subtotal = Atendimento::totalSessao($tid, $id);
-            $pct = max(0, min(30, (int) $t['taxa_servico']));
-            $taxa = ! empty($in['cobrar_taxa']) && $pct > 0 ? (int) round($subtotal * $pct / 100) : 0;
-            $total = $subtotal + $taxa;
+            $conta = Atendimento::conta($t, $s, ! empty($in['cobrar_taxa']));
+            ['subtotal' => $subtotal, 'taxa' => $taxa, 'desconto' => $desconto, 'gorjeta' => $gorjeta, 'total' => $total] = $conta;
             $pessoas = max(1, min(50, (int) ($in['pessoas'] ?? 1)));
             $pagamentos = $in['pagamentos'] ?? null;
             if ($pagamentos === null && isset($in['forma'])) {
@@ -102,16 +103,39 @@ class SalaoController extends Controller
             foreach ($limpos as [$forma, $valor]) {
                 DB::insert('INSERT INTO payments (tenant_id, session_id, forma, valor, registrado_por, created_at) VALUES (?,?,?,?,?,?)', [$tid, $id, $forma, $valor, $u['id'], agora()]);
             }
-            DB::update("UPDATE table_sessions SET status = 'fechada', fechada_em = ?, fechada_por = ?, forma_pagamento = ?, subtotal = ?, taxa = ?, total = ?, pessoas = ? WHERE id = ?",
-                [agora(), $u['id'], count($porForma) > 1 ? 'dividido' : array_key_first($porForma), $subtotal, $taxa, $total, $pessoas, $id]);
+            DB::update("UPDATE table_sessions SET status = 'fechada', fechada_em = ?, fechada_por = ?, forma_pagamento = ?, subtotal = ?, taxa = ?, total = ?, pessoas = ?, desconto = ?, gorjeta = ? WHERE id = ?",
+                [agora(), $u['id'], count($porForma) > 1 ? 'dividido' : array_key_first($porForma), $subtotal, $taxa, $total, $pessoas, $desconto, $gorjeta, $id]);
+            if ($desconto > 0 && $s['cupom_id']) {
+                DB::update('UPDATE cupons SET usos = usos + 1 WHERE id = ?', [$s['cupom_id']]);
+            }
             DB::update("UPDATE service_calls SET status = 'atendido', atendido_em = ? WHERE tenant_id = ? AND (session_id = ? OR (table_id = ? AND status = 'aberto'))", [agora(), $tid, $id, $s['table_id']]);
             DB::update("UPDATE orders SET status = 'entregue', updated_at = ?, entregue_em = COALESCE(entregue_em, ?) WHERE session_id = ? AND status IN ('recebido','preparo','pronto')", [agora(), agora(), $id]);
 
-            return compact('subtotal', 'taxa', 'total', 'limpos');
+            return compact('subtotal', 'taxa', 'total', 'limpos', 'desconto');
         });
-        Auditoria::registrar($tid, 'usuario:'.$u['id'], 'sessao.fechada', $id, ['total' => $r['total'], 'taxa' => $r['taxa'], 'pagamentos' => $r['limpos']]);
+        Auditoria::registrar($tid, 'usuario:'.$u['id'], 'sessao.fechada', $id, ['total' => $r['total'], 'taxa' => $r['taxa'], 'desconto' => $r['desconto'], 'pagamentos' => $r['limpos']]);
 
         return response()->json(['ok' => true, 'subtotal' => $r['subtotal'], 'taxa' => $r['taxa'], 'total' => $r['total']]);
+    }
+
+    public function cupom(string $id)
+    {
+        $u = usuario();
+        $tid = (int) $u['tenant_id'];
+        $t = Atendimento::tenant($tid);
+        $s = Atendimento::sessaoDoTenant($tid, $id);
+        if (! in_array($s['status'], ['aberta', 'conta_solicitada'], true)) {
+            erro(409, 'Esta conta já foi fechada.');
+        }
+        $codigo = (string) (entrada()['codigo'] ?? '');
+        if ($codigo === '') {
+            DB::update('UPDATE table_sessions SET cupom_id = NULL, cupom_codigo = NULL WHERE id = ?', [$id]);
+        } else {
+            $c = Cupons::validar($t, $codigo, Atendimento::totalSessao($tid, $id));
+            DB::update('UPDATE table_sessions SET cupom_id = ?, cupom_codigo = ? WHERE id = ?', [$c['id'], $c['codigo'], $id]);
+        }
+
+        return response()->json(['ok' => true, 'conta' => Atendimento::conta($t, Atendimento::sessaoDoTenant($tid, $id))]);
     }
 
     public function reabrir(string $id)

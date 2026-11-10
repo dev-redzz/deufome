@@ -1,4 +1,15 @@
-# Deu Fome — versão 2.2 (Laravel)
+# Deu Fome — versão 3.0 (Laravel)
+
+## Novidades da 3.0
+- Tablet redesenhado: comanda ao lado nas telas grandes, guia "Como pedir", pedido ao vivo no topo, vitrine de pratos na tela inicial.
+- Pizza meio a meio e tamanhos (P/M/G) com preço automático; "Combina com" sugere bebida e sobremesa.
+- Cozinha: filtro Cozinha/Bar (impressão por setor) e "Esgotou algo?" com um toque.
+- Pix na mesa com gorjeta opcional (QR code gerado com a chave do restaurante).
+- Cupons de desconto, avaliação por prato, mapa do salão arrastável, resumo semanal por e-mail.
+- Equipe com último acesso e atividade; Configurações em seções; Personalizar com fontes, lista/cartões e faixa de promoção.
+- Login igual ao Meu Cash, com o ícone oficial do Google (`public/img/google.svg`, do pacote "sign-in assets" do Google).
+- Testes: `python tests/api/testar_api.py` (181) e `python tests/api/testar_v3.py` (46).
+
 
 Plataforma de pedidos com um tablet fixo em cada mesa. Vários restaurantes usam o mesmo site, cada um com seus dados separados.
 

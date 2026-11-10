@@ -4,7 +4,10 @@ import DF from './comum.js';
   const { icone, esc, api, toast, segundosDesde, tempo, imprimir } = DF;
   let estab = '', autoImprimir = false, pedidosAtuais = [];
   try { autoImprimir = localStorage.getItem('deufome_auto_imprimir') === '1'; } catch {}
-  let ATRASO_MIN = 15, rodape = '', somPadraoAplicado = false;
+  let ATRASO_MIN = 15, rodape = '', somPadraoAplicado = false, setor = '';
+  try { setor = localStorage.getItem('deufome_setor') || ''; } catch {}
+  const NOMES_SETOR = { '': 'Tudo', cozinha: 'Cozinha', bar: 'Bar' };
+  const doSetor = p => setor ? { ...p, itens: p.itens.filter(i => (i.setor || 'cozinha') === setor) } : p;
   let conhecidos = null, somLigado = false, ctx;
   const proximo = { recebido: ['preparo', 'Começar preparo', 'btn-azul'], preparo: ['pronto', 'Marcar como pronto', 'btn-sucesso'], pronto: ['entregue', 'Entregue na mesa', 'btn-marinho'] };
   const anterior = { preparo: 'recebido', pronto: 'preparo' };
@@ -20,6 +23,7 @@ import DF from './comum.js';
   async function carregar() {
     try {
       const r = await api('/api/cozinha/pedidos');
+      r.pedidos = r.pedidos.map(doSetor).filter(p => p.itens.length);
       const novos = conhecidos ? r.pedidos.filter(p => !conhecidos.has(p.id)) : [];
       if (novos.length) bip();
       pedidosAtuais = r.pedidos;
@@ -58,7 +62,7 @@ import DF from './comum.js';
 
   function textoTicket(p) {
     const hora = new Date(p.created_at.replace(' ', 'T') + 'Z').toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    return `<h1>${esc(estab)}</h1><h2>${esc((p.mesa_nome || 'Mesa ' + String(p.mesa).padStart(2, '0')).toUpperCase())}</h2><div class="c">Pedido ${p.numero} · ${hora}</div><hr>
+    return `<h1>${esc(estab)}</h1>${setor ? `<div class="c">${NOMES_SETOR[setor].toUpperCase()}</div>` : ''}<h2>${esc((p.mesa_nome || 'Mesa ' + String(p.mesa).padStart(2, '0')).toUpperCase())}</h2><div class="c">Pedido ${p.numero} · ${hora}</div><hr>
       ${p.itens.map(i => `<div class="g">${i.quantidade}x ${esc(i.nome)}</div>${i.adicionais.length ? `<div class="add">+ ${esc(i.adicionais.join(', '))}</div>` : ''}${i.observacao ? `<div class="obs">** ${esc(i.observacao)} **</div>` : ''}`).join('')}<hr>${rodape ? `<div class="c">${esc(rodape)}</div>` : ''}`;
   }
 
@@ -80,6 +84,46 @@ import DF from './comum.js';
     try { await api(`/api/cozinha/pedidos/${b.dataset.id}/status`, { metodo: 'POST', dados: { status: b.dataset.st } }); await carregar(); }
     catch (er) { toast(er.message, 'erro'); b.disabled = false; }
   });
+
+  const setores = document.getElementById('setores');
+  const pintarSetor = () => setores.querySelectorAll('[data-setor]').forEach(b => b.classList.toggle('marcado', b.dataset.setor === setor));
+  pintarSetor();
+  setores.onclick = e => {
+    const b = e.target.closest('[data-setor]'); if (!b) return;
+    setor = b.dataset.setor;
+    try { localStorage.setItem('deufome_setor', setor); } catch {}
+    pintarSetor(); conhecidos = null; carregar();
+    toast(setor ? `Mostrando só os itens de ${NOMES_SETOR[setor]}.` : 'Mostrando todos os itens.');
+  };
+
+  /* Esgotou algo? Marca com um toque e some na hora de todos os tablets. */
+  document.getElementById('esgotar').onclick = async () => {
+    const f = document.createElement('div');
+    f.className = 'gaveta-fundo';
+    f.innerHTML = '<aside class="gaveta"><header><h2>O que acabou?</h2><button class="btn btn-p" data-fechar>Fechar</button></header><p>Toque para marcar como esgotado. Some dos tablets na hora. Toque de novo quando voltar.</p><input type="search" placeholder="Procurar prato" id="busca"><div class="gaveta-lista">Carregando…</div></aside>';
+    document.body.appendChild(f);
+    const fechar = () => { f.classList.add('saindo'); setTimeout(() => f.remove(), 220); };
+    f.addEventListener('click', e => { if (e.target === f || e.target.closest('[data-fechar]')) fechar(); });
+    let cats = [];
+    const pintar = () => {
+      const q = f.querySelector('#busca').value.trim().toLowerCase();
+      f.querySelector('.gaveta-lista').innerHTML = cats.map(c => {
+        const ps = c.produtos.filter(p => !q || p.nome.toLowerCase().includes(q));
+        return ps.length ? `<h3>${esc(c.nome)}</h3>${ps.map(p => `<button class="esg ${p.disponivel ? '' : 'acabou'}" data-esg="${p.id}"><span>${esc(p.nome)}</span><em>${p.disponivel ? 'Tem' : 'Esgotado'}</em></button>`).join('')}` : '';
+      }).join('') || '<p>Nenhum prato encontrado.</p>';
+    };
+    try { cats = (await api('/api/cozinha/produtos')).categorias; pintar(); } catch (er) { toast(er.message, 'erro'); }
+    f.querySelector('#busca').oninput = pintar;
+    f.querySelector('.gaveta-lista').onclick = async e => {
+      const b = e.target.closest('[data-esg]'); if (!b) return;
+      const p = cats.flatMap(c => c.produtos).find(x => x.id == b.dataset.esg);
+      try {
+        const r = await api(`/api/cozinha/produtos/${p.id}/disponivel`, { metodo: 'POST', dados: { disponivel: !p.disponivel } });
+        p.disponivel = r.disponivel; pintar();
+        toast(p.disponivel ? `${p.nome} voltou ao cardápio.` : `${p.nome} marcado como esgotado.`);
+      } catch (er) { toast(er.message, 'erro'); }
+    };
+  };
 
   document.getElementById('sair').onclick = async () => { await api('/api/logout', { metodo: 'POST' }).catch(() => {}); location.href = '/admin'; };
   api('/api/me').then(u => { estab = u.estabelecimento || ''; document.getElementById('titulo').innerHTML = `Cozinha <small>${esc(estab)}</small>`; }).catch(() => {});

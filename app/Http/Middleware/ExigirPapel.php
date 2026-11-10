@@ -20,10 +20,21 @@ class ExigirPapel
         if (! $id) {
             erro(401, 'Faça login.');
         }
-        $u = DB::selectOne('SELECT u.id, u.nome, u.email, u.papel, u.ativo, u.tenant_id, t.nome AS estabelecimento, t.status AS tenant_status
+        $u = DB::selectOne('SELECT u.id, u.nome, u.email, u.papel, u.ativo, u.tenant_id, u.sessao_versao, u.ultimo_acesso, t.nome AS estabelecimento, t.status AS tenant_status
             FROM users u LEFT JOIN tenants t ON t.id = u.tenant_id WHERE u.id = ?', [$id]);
         if (! $u || ! $u['ativo']) {
             erro(401, 'Faça login.');
+        }
+        $sv = $request->session()->get('sv');
+        if ($sv === null) {
+            $request->session()->put('sv', (int) $u['sessao_versao']);
+        } elseif ((int) $sv !== (int) $u['sessao_versao']) {
+            Auth::logout();
+            $request->session()->invalidate();
+            erro(401, 'Sua sessão foi encerrada. Entre de novo.');
+        }
+        if (! $u['ultimo_acesso'] || strtotime($u['ultimo_acesso'].' UTC') < time() - 300) {
+            DB::update('UPDATE users SET ultimo_acesso = ? WHERE id = ?', [agora(), $u['id']]);
         }
         if ($u['tenant_id'] && $u['tenant_status'] !== 'ativo') {
             erro(403, 'Este estabelecimento está bloqueado. Fale com o suporte do Deu Fome.');

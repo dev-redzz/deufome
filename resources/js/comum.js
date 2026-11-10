@@ -47,6 +47,19 @@ const DF = (() => {
     casa: '<path d="M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z"/>',
     pulso: '<path d="M3 12h4l3-7 4 14 3-7h4"/>',
     escudo: '<path d="M12 3l8 3v6c0 4.5-3.4 8.3-8 9-4.6-.7-8-4.5-8-9V6z"/><path d="M9 12l2 2 4-4"/>',
+    cupom: '<path d="M4 7a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v2.5a2.5 2.5 0 0 0 0 5V17a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-2.5a2.5 2.5 0 0 0 0-5z"/><path d="M14.5 9.5l-5 5M9.5 9.5h.01M14.5 14.5h.01"/>',
+    calendario: '<rect x="3.5" y="5" width="17" height="15" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/>',
+    mapa: '<rect x="3" y="3" width="18" height="18" rx="3"/><rect x="6.5" y="6.5" width="4" height="4" rx="1"/><circle cx="16" cy="8.5" r="2"/><rect x="6.5" y="14" width="11" height="4" rx="1"/>',
+    lista: '<path d="M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01"/>',
+    grade: '<rect x="4" y="4" width="7" height="7" rx="1.5"/><rect x="13" y="4" width="7" height="7" rx="1.5"/><rect x="4" y="13" width="7" height="7" rx="1.5"/><rect x="13" y="13" width="7" height="7" rx="1.5"/>',
+    qr: '<rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><path d="M14 14h2v2h-2zM18 18h2v2h-2zM18 14h2M14 18v2"/>',
+    baixar: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+    copo: '<path d="M6 4h12l-1.5 16h-9z"/><path d="M6.5 9h11"/>',
+    coracao: '<path d="M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z"/>',
+    copiar: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/>',
+    mover: '<path d="M12 3v18M3 12h18M12 3l-3 3M12 3l3 3M12 21l-3-3M12 21l3-3M3 12l3-3M3 12l3 3M21 12l-3-3M21 12l-3 3"/>',
+    raio: '<path d="M13 2L4 14h7l-1 8 9-12h-7z"/>',
+    pizza: '<path d="M12 3a9 9 0 0 1 9 9H12z"/><path d="M12 12L5.6 18.4A9 9 0 0 1 12 3"/>',
     olho: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>',
   };
   const icone = (n, t = 24, e = 2.5) => `<svg width="${t}" height="${t}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${e}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${P[n] || ''}</svg>`;
@@ -61,9 +74,10 @@ const DF = (() => {
     let el = document.querySelector('.toast');
     if (!el) { el = document.createElement('div'); document.body.appendChild(el); }
     el.className = 'toast ' + tipo;
+    el.setAttribute('role', 'status');
     el.textContent = msg;
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => el.remove(), 2600);
+    toastTimer = setTimeout(() => { el.classList.add('saindo'); setTimeout(() => el.remove(), 260); }, 2800);
   }
 
   async function api(caminho, { metodo = 'GET', dados, headers = {}, form } = {}) {
@@ -83,7 +97,17 @@ const DF = (() => {
     f.className = 'modal-fundo';
     f.innerHTML = `<div class="modal ${classe}">${html}</div>`;
     f.addEventListener('click', e => { if (e.target === f) fechar(); });
-    function fechar() { f.remove(); aoFechar && aoFechar(); }
+    const teclaEsc = e => { if (e.key === 'Escape' && document.querySelectorAll('.modal-fundo').length && f === [...document.querySelectorAll('.modal-fundo')].pop()) fechar(); };
+    document.addEventListener('keydown', teclaEsc);
+    let fechado = false;
+    function fechar() {
+      if (fechado) return; fechado = true;
+      document.removeEventListener('keydown', teclaEsc);
+      const fim = () => { f.remove(); };
+      if (matchMedia('(prefers-reduced-motion: reduce)').matches) fim();
+      else { f.classList.add('saindo'); f.addEventListener('animationend', fim, { once: true }); setTimeout(fim, 400); }
+      aoFechar && aoFechar();
+    }
     document.body.appendChild(f);
     return { el: f.firstElementChild, fechar };
   }
@@ -111,7 +135,23 @@ const DF = (() => {
 
   const dataHora = utc => new Date(utc.replace(' ', 'T') + 'Z').toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 
-  return { icone, real, esc, uid, toast, api, modal, segundosDesde, tempo, imprimir, dataHora };
+  /** Anima números de 0 até o valor (elementos com data-contar e data-formato="real|int"). */
+  function contar(raiz) {
+    if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    raiz.querySelectorAll('[data-contar]').forEach(el => {
+      const alvo = Number(el.dataset.contar), real_ = el.dataset.formato === 'real';
+      if (!alvo) return;
+      const ini = performance.now(), dur = 700;
+      const passo = t => {
+        const k = Math.min(1, (t - ini) / dur), v = Math.round(alvo * (1 - Math.pow(1 - k, 3)));
+        el.textContent = real_ ? real(v) : v.toLocaleString('pt-BR');
+        if (k < 1) requestAnimationFrame(passo);
+      };
+      requestAnimationFrame(passo);
+    });
+  }
+
+  return { icone, real, esc, uid, toast, api, modal, segundosDesde, tempo, imprimir, dataHora, contar };
 })();
 
 window.DF = DF;

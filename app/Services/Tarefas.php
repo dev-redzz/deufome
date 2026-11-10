@@ -50,5 +50,6 @@ class Tarefas
         if (self::vencida('backup', 23 * 3600)) {
             Backup::fazer(true);
         }
+        ResumoSemanal::talvezEnviar();
     }
 }

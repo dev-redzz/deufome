@@ -37,12 +37,16 @@ Route::middleware('tablet')->prefix('tablet')->controller(TabletController::clas
     Route::post('chamar', 'chamar');
     Route::post('desbloquear', 'desbloquear');
     Route::post('avaliar', 'avaliar');
+    Route::post('cupom', 'cupom');
+    Route::post('pix', 'pix');
 });
 
 // Qualquer pessoa logada
 Route::middleware('papel')->group(function () {
     Route::get('me', [SessaoController::class, 'eu']);
     Route::post('minha-senha', [SessaoController::class, 'minhaSenha']);
+    Route::post('minha-conta', [SessaoController::class, 'minhaConta']);
+    Route::post('sair-de-todos', [SessaoController::class, 'sairDeTodos']);
     Route::post('sugestoes', [SugestaoController::class, 'criar']);
     Route::get('avisos', [\App\Http\Controllers\AvisoController::class, 'listar']);
 });
@@ -51,6 +55,8 @@ Route::middleware('papel')->group(function () {
 Route::middleware('papel:dono,gerente,caixa,cozinha')->controller(CozinhaController::class)->group(function () {
     Route::get('cozinha/pedidos', 'pedidos');
     Route::post('cozinha/pedidos/{id}/status', 'status')->whereNumber('id');
+    Route::get('cozinha/produtos', 'produtos');
+    Route::post('cozinha/produtos/{id}/disponivel', 'disponivel')->whereNumber('id');
 });
 
 // Salão e caixa
@@ -60,6 +66,7 @@ Route::middleware('papel:dono,gerente,caixa')->group(function () {
         Route::get('sessoes/{id}', 'sessao')->whereUuid('id');
         Route::post('sessoes/{id}/fechar', 'fechar')->whereUuid('id');
         Route::post('sessoes/{id}/reabrir', 'reabrir')->whereUuid('id');
+        Route::post('sessoes/{id}/cupom', 'cupom')->whereUuid('id');
         Route::post('pedidos/{id}/cancelar', 'cancelarPedido')->whereNumber('id');
         Route::post('chamados/{id}/atender', 'atender')->whereNumber('id');
     });
@@ -97,6 +104,7 @@ Route::middleware('papel:dono,gerente')->group(function () {
         Route::get('mesas', 'listar');
         Route::post('mesas', 'criar');
         Route::post('mesas/lote', 'criarVarias');
+        Route::post('mesas/mapa', 'mapa');
         Route::post('mesas/{id}', 'salvar')->whereNumber('id');
         Route::post('mesas/{id}/remover', 'remover')->whereNumber('id');
     });
@@ -105,6 +113,14 @@ Route::middleware('papel:dono,gerente')->group(function () {
         Route::get('equipe', 'listar');
         Route::post('equipe', 'criar');
         Route::post('equipe/{id}', 'salvar')->whereNumber('id');
+        Route::get('equipe/atividade', 'atividade');
+    });
+
+    Route::controller(\App\Http\Controllers\Painel\CupomController::class)->group(function () {
+        Route::get('cupons', 'listar');
+        Route::post('cupons', 'criar');
+        Route::post('cupons/{id}', 'salvar')->whereNumber('id');
+        Route::post('cupons/{id}/remover', 'remover')->whereNumber('id');
     });
 
     Route::controller(ConfiguracaoController::class)->group(function () {
@@ -112,6 +128,9 @@ Route::middleware('papel:dono,gerente')->group(function () {
         Route::post('config', 'salvar');
         Route::post('config/imagem', 'imagem');
         Route::post('config/imagem/remover', 'removerImagem');
+        Route::post('config/resumo-teste', 'resumoTeste');
+        Route::get('config/exportar', 'exportar');
+        Route::post('config/excluir', 'pedirExclusao');
     });
 });
 

@@ -48,6 +48,8 @@ class SessaoController extends Controller
         $s->forget(['google_pendente', 'oauth_state']);
         Auth::login(Usuario::findOrFail($id));
         $s->regenerate(true);
+        $s->put('sv', (int) DB::scalar('SELECT sessao_versao FROM users WHERE id = ?', [$id]));
+        DB::update('UPDATE users SET ultimo_acesso = ? WHERE id = ?', [agora(), $id]);
     }
 
     public function sair(Request $request)
@@ -73,7 +75,27 @@ class SessaoController extends Controller
         return response()->json([
             'id' => $u['id'], 'nome' => $u['nome'], 'email' => $u['email'], 'papel' => $u['papel'],
             'estabelecimento' => $u['estabelecimento'], 'sem_volume' => sem_volume() && $u['papel'] === 'plataforma',
+            'google' => (bool) DB::scalar('SELECT google_sub IS NOT NULL FROM users WHERE id = ?', [$u['id']]),
+            'desde' => DB::scalar('SELECT created_at FROM users WHERE id = ?', [$u['id']]),
         ]);
+    }
+
+    public function minhaConta()
+    {
+        $u = usuario();
+        DB::update('UPDATE users SET nome = ? WHERE id = ?', [texto(entrada(), 'nome', 60), $u['id']]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Encerra todas as outras sessões desta pessoa (mantém esta). */
+    public function sairDeTodos(Request $request)
+    {
+        $u = usuario();
+        DB::update('UPDATE users SET sessao_versao = sessao_versao + 1 WHERE id = ?', [$u['id']]);
+        $request->session()->put('sv', (int) DB::scalar('SELECT sessao_versao FROM users WHERE id = ?', [$u['id']]));
+
+        return response()->json(['ok' => true]);
     }
 
     public function minhaSenha()

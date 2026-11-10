@@ -22,9 +22,47 @@ class EquipeController extends Controller
         $u = usuario();
 
         return response()->json([
-            'equipe' => DB::select('SELECT id, nome, email, papel, ativo FROM users WHERE tenant_id = ? ORDER BY ativo DESC, nome', [$u['tenant_id']]),
+            'equipe' => array_map(function ($p) {
+                $p['google'] = (bool) $p['google'];
+
+                return $p;
+            }, DB::select('SELECT id, nome, email, papel, ativo, ultimo_acesso, created_at, google_sub IS NOT NULL AS google FROM users WHERE tenant_id = ? ORDER BY ativo DESC, nome', [$u['tenant_id']])),
             'eu' => $u['id'],
         ]);
+    }
+
+    private const ACOES = [
+        'sessao.fechada' => 'fechou a conta', 'sessao.reaberta' => 'reabriu a conta', 'pedido.cancelado' => 'cancelou um pedido',
+        'produto.removido' => 'removeu um produto', 'produto.esgotado' => 'marcou como esgotado', 'produto.voltou' => 'voltou a oferecer',
+        'equipe.criado' => 'cadastrou na equipe', 'equipe.alterado' => 'alterou uma pessoa da equipe', 'mesa.removida' => 'removeu uma mesa',
+        'mesa.lote' => 'criou mesas', 'config.pin_alterado' => 'trocou o PIN dos tablets', 'cupom.criado' => 'criou o cupom', 'cupom.removido' => 'removeu o cupom',
+        'dispositivo.ativado' => 'tablet ativado', 'sessao.pix' => 'mesa escolheu pagar no Pix', 'quiosque.desbloqueado' => 'tablet desbloqueado com PIN',
+    ];
+
+    /** Últimas ações da equipe, em linguagem simples. */
+    public function atividade()
+    {
+        $tid = (int) usuario()['tenant_id'];
+        $nomes = array_column(DB::select('SELECT id, nome FROM users WHERE tenant_id = ?', [$tid]), 'nome', 'id');
+        $saida = [];
+        foreach (DB::select('SELECT ator, acao, alvo, dados, created_at FROM audit_logs WHERE tenant_id = ? AND acao IN ('.implode(',', array_fill(0, count(self::ACOES), '?')).') ORDER BY id DESC LIMIT 60', [$tid, ...array_keys(self::ACOES)]) as $l) {
+            [$tipo, $id] = array_pad(explode(':', $l['ator'], 2), 2, '');
+            $dados = json_decode((string) $l['dados'], true) ?: [];
+            $detalhe = $dados['nome'] ?? (in_array($l['acao'], ['equipe.criado', 'cupom.criado', 'cupom.removido'], true) ? $l['alvo'] : null);
+            if ($l['acao'] === 'sessao.fechada' && isset($dados['total'])) {
+                $detalhe = 'R$ '.reais((int) $dados['total']);
+            }
+            if ($l['acao'] === 'pedido.cancelado' && isset($dados['motivo'])) {
+                $detalhe = $dados['motivo'];
+            }
+            $saida[] = [
+                'quem' => $tipo === 'usuario' ? ($nomes[$id] ?? 'Pessoa removida') : 'Tablet',
+                'pessoa' => $tipo === 'usuario' ? (int) $id : null,
+                'acao' => self::ACOES[$l['acao']], 'detalhe' => $detalhe, 'quando' => $l['created_at'],
+            ];
+        }
+
+        return response()->json(['atividade' => $saida]);
     }
 
     public function criar()

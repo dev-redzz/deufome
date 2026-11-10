@@ -26,7 +26,7 @@ class MesaController extends Controller
 
     public function listar()
     {
-        return response()->json(['mesas' => DB::select("SELECT m.id, m.numero, m.nome,
+        return response()->json(['mesas' => DB::select("SELECT m.id, m.numero, m.nome, m.pos_x, m.pos_y, m.formato, m.lugares,
             (SELECT d.nome FROM devices d WHERE d.table_id = m.id AND d.status <> 'bloqueado' LIMIT 1) AS tablet,
             (SELECT 1 FROM table_sessions s WHERE s.table_id = m.id AND s.status IN ('aberta','conta_solicitada')) AS ocupada
             FROM tables m WHERE m.tenant_id = ? AND m.ativo = 1 ORDER BY m.numero", [usuario()['tenant_id']])]);
@@ -103,7 +103,28 @@ class MesaController extends Controller
                 erro(409, "O número $numero pertence a uma mesa removida. Crie a mesa $numero para reativá-la.");
             }
         }
-        DB::update('UPDATE tables SET numero = ?, nome = ? WHERE id = ?', [$numero, $nome, $m['id']]);
+        $formato = array_key_exists('formato', $in) ? (in_array($in['formato'], ['quadrada', 'redonda', 'retangular'], true) ? $in['formato'] : erro(422, 'Formato inválido.')) : $m['formato'];
+        $lugares = array_key_exists('lugares', $in) ? max(1, min(30, (int) $in['lugares'])) : (int) $m['lugares'];
+        DB::update('UPDATE tables SET numero = ?, nome = ?, formato = ?, lugares = ? WHERE id = ?', [$numero, $nome, $formato, $lugares, $m['id']]);
+
+        return response()->json(['ok' => true]);
+    }
+
+    /** Salva as posições das mesas no mapa do salão (0 a 1000 em cada eixo). */
+    public function mapa()
+    {
+        $tid = (int) usuario()['tenant_id'];
+        $lista = entrada()['posicoes'] ?? null;
+        if (! is_array($lista) || count($lista) > 500) {
+            erro(422, 'Posições inválidas.');
+        }
+        DB::transaction(function () use ($lista, $tid) {
+            foreach ($lista as $p) {
+                $x = isset($p['x']) ? max(0, min(1000, (int) $p['x'])) : null;
+                $y = isset($p['y']) ? max(0, min(1000, (int) $p['y'])) : null;
+                DB::update('UPDATE tables SET pos_x = ?, pos_y = ? WHERE id = ? AND tenant_id = ?', [$x, $y, (int) ($p['id'] ?? 0), $tid]);
+            }
+        });
 
         return response()->json(['ok' => true]);
     }
