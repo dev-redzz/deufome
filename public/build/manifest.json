@@ -4,7 +4,7 @@
     "name": "comum"
   },
   "resources/css/app.css": {
-    "file": "assets/app-C8NIm9wy.css",
+    "file": "assets/app-v-xTgmB4.css",
     "name": "app",
     "names": [
       "app.css"
@@ -13,7 +13,7 @@
     "isEntry": true
   },
   "resources/js/admin.js": {
-    "file": "assets/admin-tM1V1RKF.js",
+    "file": "assets/admin-BKHoDFO-.js",
     "name": "admin",
     "src": "resources/js/admin.js",
     "isEntry": true,
@@ -22,7 +22,7 @@
     ]
   },
   "resources/js/cozinha.js": {
-    "file": "assets/cozinha-vcT3L3iE.js",
+    "file": "assets/cozinha-DYP044VX.js",
     "name": "cozinha",
     "src": "resources/js/cozinha.js",
     "isEntry": true,
@@ -31,7 +31,7 @@
     ]
   },
   "resources/js/tablet.js": {
-    "file": "assets/tablet-Bo0Pg-cS.js",
+    "file": "assets/tablet-CeTbIbvf.js",
     "name": "tablet",
     "src": "resources/js/tablet.js",
     "isEntry": true,

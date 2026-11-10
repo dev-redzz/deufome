@@ -1516,7 +1516,8 @@ html[data-fonte="moderna"] { --display: 'Space Grotesk', system-ui, sans-serif; 
   .esg.acabou { background: #3D1D1D; }
   .esg.acabou span { text-decoration: line-through; opacity: .7; }
   .esg.acabou em { background: var(--tomate); color: #fff; }
-  .cozinha .ticket { animation: sobe .35s both; }
+  .cozinha .ticket { animation: none; }
+  .cozinha .ticket.novo { animation: sobe .4s both, chegar 1s ease-in-out .4s 3; }
 }
 
 /* ================================================== VERSÃO 3: responsivo */
@@ -1600,4 +1601,90 @@ html[data-tema-tablet="escuro"] .conta-mesa > span { color: var(--texto); }
 @layer components {
   .gaveta input, .gaveta header, .gaveta > p { flex: none; }
   .gaveta-lista { flex: 1; min-height: 0; }
+}
+
+/* ================================================== COZINHA v3.1 */
+@layer components {
+  .cozinha { background: #0D0F17; }
+  .cozinha .coz-topo { display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #151827; border-bottom: 1px solid #23273B; position: sticky; top: 0; z-index: 5; }
+  .coz-marca { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+  .coz-marca h1 { flex: none !important; white-space: nowrap; }
+  .coz-ferramentas { display: flex; gap: 6px; background: #1D2133; border-radius: 14px; padding: 4px; }
+  .ferr { display: inline-flex; align-items: center; gap: 8px; border: 0; background: transparent; color: #C9CCDB; border-radius: 11px; padding: 0 14px; height: 40px; font-weight: 700; font-size: 14px; transition: background .15s, color .15s; }
+  .ferr:hover { background: #262B42; color: #fff; }
+  .ferr.ligado { background: #17321F; color: #7FE0A8; }
+  .ferr.so-icone { width: 44px; padding: 0; justify-content: center; background: #1D2133; height: 48px; border-radius: 14px; }
+  .fi { display: inline-grid; place-items: center; }
+  .cozinha .relogio { font-size: 30px; padding: 0 4px; font-variant-numeric: tabular-nums; }
+  .setores { height: 48px; align-items: stretch; border-radius: 14px; background: #1D2133; }
+  .setores button { padding: 0 18px; border-radius: 11px; font-size: 15px; }
+  .coz-resumo { display: flex; gap: 12px; padding: 16px 20px 0; flex-wrap: wrap; }
+  .coz-resumo .rz { background: #151827; border: 1px solid #23273B; border-radius: 16px; padding: 10px 18px; display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 10px; align-items: baseline; min-width: 150px; }
+  .rz small { grid-column: 1 / -1; color: #8B90A8; font-size: 12.5px; font-weight: 700; }
+  .rz b { font-family: var(--display); font-size: 28px; color: #fff; line-height: 1.1; }
+  .rz span { color: #8B90A8; font-size: 13px; }
+  .rz.alerta { background: #3A1518; border-color: #6B1F24; }
+  .rz.alerta b { color: #FF8A80; }
+  .rz.setor { background: #2A2410; border-color: #5A4A14; }
+  .rz.setor b { color: var(--mostarda); }
+  .cozinha .colunas { padding: 16px 20px 24px; gap: 16px; min-height: calc(100vh - 170px); align-items: stretch; }
+  .cozinha .coluna { background: #151827; border: 1px solid #23273B; border-radius: 22px; padding: 14px; display: flex; flex-direction: column; min-width: 0; }
+  .cozinha .coluna h2 { margin: 2px 4px 14px; font-size: 20px; }
+  .cozinha .coluna h2 i { width: 12px; height: 12px; border-radius: 50%; background: var(--c); box-shadow: 0 0 0 5px color-mix(in srgb, var(--c) 22%, transparent); }
+  .coluna.recebido { --c: #fff; } .coluna.preparo { --c: var(--mostarda); } .coluna.pronto { --c: #7FE0A8; }
+  .cozinha .coluna h2 .n { margin-left: auto; background: var(--c) !important; }
+  .coluna-corpo { display: flex; flex-direction: column; flex: 1; }
+  .cozinha .coluna .nada { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; gap: 6px; color: #6E7390; padding: 30px 16px; border: 2px dashed #23273B; border-radius: 16px; min-height: 220px; }
+  .cozinha .coluna .nada svg { color: var(--c); opacity: .7; margin-bottom: 4px; }
+  .cozinha .coluna .nada b { color: #C9CCDB; font-size: 17px; }
+  .cozinha .coluna .nada span { font-size: 14px; max-width: 26ch; }
+  .cozinha .ticket { border-radius: 14px 14px 0 0; margin-bottom: 26px; border-top-width: 0; padding-top: 16px; box-shadow: 0 12px 30px rgba(0, 0, 0, .35); }
+  .cozinha .ticket::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 7px; border-radius: 14px 14px 0 0; background: #CFC6BC; }
+  .cozinha .ticket.preparo::before { background: var(--mostarda); }
+  .cozinha .ticket.pronto::before { background: var(--manjericao); }
+  .cozinha .ticket.atrasado::before { background: var(--tomate); }
+  .cozinha .ticket.atrasado { box-shadow: 0 0 0 3px var(--tomate), 0 12px 30px rgba(0, 0, 0, .35); }
+  .ticket .tempo { display: inline-flex; align-items: center; gap: 4px; }
+  .ticket .num b { color: var(--tomate); }
+  .relogio-barra { height: 6px; border-radius: 3px; background: #EADFD4; margin: 10px 0 2px; overflow: hidden; }
+  .relogio-barra i { display: block; height: 100%; border-radius: 3px; background: var(--manjericao); transition: width 1s linear; }
+  .ticket.preparo .relogio-barra i { background: var(--mostarda); }
+  .ticket.atrasado .relogio-barra i { background: var(--tomate); }
+  .tag-bar { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 800; background: #E3F1FF; color: #1B5FA8; border-radius: 6px; padding: 1px 6px; vertical-align: middle; }
+  .ticket li .obs { display: flex; align-items: center; gap: 4px; background: #FDECEA; border-radius: 8px; padding: 4px 8px; margin-top: 6px; }
+  .ticket-acoes { display: flex; gap: 6px; margin-top: 8px; }
+  .ticket-acoes .voltar { margin-top: 0; flex: 1; border-radius: 10px; text-decoration: none; background: #F3ECE5; }
+  .ticket .btn { border-radius: 14px; }
+  @media (max-width: 1100px) {
+    .cozinha .coz-topo { flex-wrap: wrap; }
+    .ferr span:last-child:not(.fi) { display: none; }
+    .ferr { padding: 0 10px; }
+  }
+}
+
+/* ================================================== v3.1: transições do tablet, abertura e caixa */
+@layer components {
+  .descanso::after { content: ''; position: absolute; inset: 0; z-index: 30; background: var(--fundo); clip-path: circle(0 at var(--x, 50%) var(--y, 50%)); pointer-events: none; }
+  .descanso.saindo::after { animation: cortina .55s cubic-bezier(.6, 0, .3, 1) forwards; }
+  .descanso.saindo .descanso-meio, .descanso.saindo .infos-descanso { transition: transform .5s cubic-bezier(.6, 0, .3, 1), opacity .4s; transform: scale(1.06); opacity: 0; }
+  @keyframes cortina { to { clip-path: circle(150% at var(--x, 50%) var(--y, 50%)); } }
+  .app.entrando .topo { animation: topo-desce .5s cubic-bezier(.2, .8, .2, 1) both; }
+  .app.entrando .cats { animation: lado-esq .5s .08s cubic-bezier(.2, .8, .2, 1) both; }
+  .app.entrando .comanda-fixa { animation: lado-dir .55s .14s cubic-bezier(.2, .8, .2, 1) both; }
+  .app.entrando .barra { animation: barra-sobe .5s .2s cubic-bezier(.2, .8, .2, 1) both; }
+  .app.entrando .conteudo.animar .card { animation-delay: calc(.18s + var(--i, 0) * 45ms); }
+  .app.entrando .guia, .app.entrando .faixa-promo, .app.entrando .destaques > h2 { animation: sobe .5s .12s both; }
+  @keyframes topo-desce { from { transform: translateY(-100%); } }
+  @keyframes lado-esq { from { transform: translateX(-40px); opacity: 0; } }
+  @keyframes lado-dir { from { transform: translateX(60px); opacity: 0; } }
+  @keyframes barra-sobe { from { transform: translateY(100%); } }
+
+  .abertura.saudacao b span { font-size: .8em; }
+  .seletor-dia { display: flex; align-items: center; gap: 6px; }
+  .dia-seta { width: 44px; height: 56px; border-radius: 14px; border: 1.5px solid var(--linha); background: var(--superficie); color: var(--texto); display: grid; place-items: center; transition: border-color .15s, background .15s; }
+  .dia-seta:hover:not(:disabled) { border-color: var(--brasa); background: var(--brasa-clara); }
+  .dia-seta:disabled { opacity: .35; }
+  .dia-seta[data-passo="-1"] svg { transform: none; }
+  .pm-campos.um { grid-template-columns: 1fr; }
+  html[data-tema="escuro"] .pm-campos input, html[data-tema="escuro"] input[type="date"] { color-scheme: dark; }
 }

@@ -24,7 +24,7 @@ import qrcode from 'qrcode-generator';
   let carrinho = [], tela = 'descanso', categoriaAtiva = null, online = true, enviando = false, chavePendente = null;
   let timerInatividade, timerPoll, timerVitrine, toquesLogo = [], ultimoFechado = false;
   let ap = {}, destaques = [], selos = {}, combina = {};
-  let primeiraVez = true;
+  let primeiraVez = true, entradaAnimada = false;
 
   /* ---------------------------------------------------- aparência escolhida pelo restaurante */
   function misturar(hex, alvo, peso) {
@@ -288,7 +288,17 @@ import qrcode from 'qrcode-generator';
       ${infos ? `<div class="infos-descanso">${infos}</div>` : ''}
       <div class="assinatura">Pedidos por <b>Deu Fome</b></div>
     </div>`;
-    raiz.querySelector('.descanso').onclick = () => { telaCheia(); irPara('cardapio'); };
+    raiz.querySelector('.descanso').onclick = e => {
+      const d = e.currentTarget;
+      if (d.classList.contains('saindo')) return;
+      telaCheia();
+      if (!MOVIMENTO) return irPara('cardapio');
+      const r = d.getBoundingClientRect();
+      d.style.setProperty('--x', ((e.clientX || r.width / 2) / r.width * 100) + '%');
+      d.style.setProperty('--y', ((e.clientY || r.height / 2) / r.height * 100) + '%');
+      d.classList.add('saindo');
+      setTimeout(() => { entradaAnimada = true; irPara('cardapio'); }, 520);
+    };
     if (vitrine.length > 1) {
       let i = 0;
       timerVitrine = setInterval(() => {
@@ -305,7 +315,8 @@ import qrcode from 'qrcode-generator';
   function garantirLayout() {
     if (raiz.querySelector('.app')) return;
     const largo = LARGO.matches;
-    raiz.innerHTML = `<div class="app ${largo ? 'largo' : ''}">
+    const anim = entradaAnimada && MOVIMENTO; entradaAnimada = false;
+    raiz.innerHTML = `<div class="app ${largo ? 'largo' : ''} ${anim ? 'entrando' : ''}">
       <header class="topo">
         <img class="logo ${ap.logo ? 'proprio' : ''}" src="${esc(ap.logo || '/img/logo.png')}" alt="" id="logo">
         <div class="estab">${esc(estado.estabelecimento)}</div>

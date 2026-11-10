@@ -76,12 +76,12 @@ import DF from './comum.js';
   pintarTema();
   escuroDoSistema.addEventListener?.('change', pintarTema);
 
-  function abertura() {
-    try { if (sessionStorage.getItem('deufome_abertura')) return; sessionStorage.setItem('deufome_abertura', '1'); } catch { return; }
+  function abertura(saudar) {
+    if (!saudar) { try { if (sessionStorage.getItem('deufome_abertura')) return; sessionStorage.setItem('deufome_abertura', '1'); } catch { return; } }
     if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
     const a = document.createElement('div');
-    a.className = 'abertura';
-    a.innerHTML = '<div class="peca"><img src="/img/icone-escuro.png" alt=""><b>Deu<span>Fome</span></b></div>';
+    a.className = 'abertura' + (saudar ? ' saudacao' : '');
+    a.innerHTML = `<div class="peca"><img src="/img/icone-escuro.png" alt=""><b>${saudar ? `Olá,<span>${esc(saudar)}</span>` : 'Deu<span>Fome</span>'}</b></div>`;
     a.onclick = () => a.remove();
     a.addEventListener('animationend', e => { if (e.animationName === 'abertura-sai') a.remove(); });
     document.body.appendChild(a);
@@ -132,6 +132,8 @@ import DF from './comum.js';
         const r = await api('/api/login', { metodo: 'POST', dados: { email: f.email.value, senha: f.senha.value, lembrar: f.lembrar.checked } });
         if (r.papel === 'cozinha' || new URLSearchParams(location.search).get('voltar') === '/cozinha') return location.href = '/cozinha';
         history.replaceState(null, '', '/admin');
+        try { sessionStorage.setItem('deufome_abertura', '1'); } catch {}
+        abertura((r.nome || '').trim().split(/\s+/)[0] || 'bem-vindo');
         iniciar();
       } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
     };
@@ -392,8 +394,7 @@ import DF from './comum.js';
     const horas = r.por_hora.map((v, i) => ({ h: i, v }));
     const primeira = Math.min(horas.findIndex(x => x.v) === -1 ? 11 : horas.findIndex(x => x.v), 11);
     const visiveis = horas.slice(primeira, Math.max(hora + 1, 23 - 0) + 1);
-    main().innerHTML = `<div class="inicio-cab"><div><h1>${saudacao}, ${esc(r.saudacao)}</h1><p><span class="data-hoje">${hojePorExtenso()}</span>${situacao}</p></div>
-        <div class="acoes-topo"><a class="btn btn-borda" href="/cozinha" target="_blank" rel="noopener">${icone('chef', 18, 2)} Abrir cozinha</a><button class="btn btn-azul" data-ir="salao">${icone('mesa', 18, 2)} Ver o salão</button></div></div>`
+    main().innerHTML = `<div class="inicio-cab"><div><h1>${saudacao}, ${esc(r.saudacao)}</h1><p><span class="data-hoje">${hojePorExtenso()}</span>${situacao}</p></div></div>`
       + (feitos < passos.length ? `<section class="primeiros-passos"><div class="pp-cab"><div><h2>Vamos deixar tudo pronto</h2><span>${feitos} de ${passos.length} passos feitos. Próximo: <b>${proximo[1]}</b></span></div><button class="btn btn-azul" data-ir="${proximo[3]}">Continuar ${icone('seta', 18, 3)}</button></div>
         <div class="pp-barra"><i style="width:${Math.round(feitos / passos.length * 100)}%"></i></div>
         <ol>${passos.map(([ok, t, d, a], i) => `<li class="${ok ? 'feito' : ''}" data-ir="${a}"><span class="pp-check">${ok ? icone('check', 16, 3) : i + 1}</span><div><b>${t}</b><small>${d}</small></div></li>`).join('')}</ol></section>` : '')
@@ -1080,7 +1081,7 @@ import DF from './comum.js';
     if (aba !== 'equipe') return;
     const ativos = r.equipe.filter(p => p.ativo);
     const porPapel = Object.keys(PAPEIS).map(k => [k, ativos.filter(p => p.papel === k).length]);
-    main().innerHTML = cabecalho('Equipe', `${ativos.length} ${ativos.length === 1 ? 'pessoa com acesso' : 'pessoas com acesso'}. Cada uma entra com o próprio e-mail e vê só o que a função permite.`, `<button class="btn btn-azul" id="novo">${icone('mais', 20, 3)} Adicionar pessoa</button>`)
+    main().innerHTML = cabecalho('Equipe', `${ativos.length} ${ativos.length === 1 ? 'pessoa com acesso' : 'pessoas com acesso'}. Cada uma entra com o próprio e-mail e vê só o que a função permite.`)
       + `<div class="funcoes">${porPapel.map(([k, n]) => `<div class="funcao ${COR_PAPEL[k]}"><div class="fn-cab"><b>${PAPEIS[k][0]}</b><span>${n}</span></div><ul>${O_QUE_VE[k].map(t => `<li>${icone('check', 14, 3)} ${t}</li>`).join('')}</ul></div>`).join('')}</div>
       <div class="equipe-grade">${r.equipe.map(p => {
         const souEu = p.id == r.eu;
@@ -1108,7 +1109,6 @@ import DF from './comum.js';
       <p class="sutil" style="margin:0">Passe o e-mail e a senha para a pessoa. Ela pode trocar a senha depois em "Minha conta".</p>`, {
       enviar: 'Adicionar', aoEnviar: async d => { await api('/api/equipe', { metodo: 'POST', dados: d }); toast(`${d.nome} já pode entrar com ${d.email}.`); equipePg(); },
     });
-    main().querySelector('#novo').onclick = nova;
     main().querySelector('#novo2').onclick = nova;
     main().onclick = async e => {
       const at = e.target.closest('[data-ativo]');
@@ -1600,14 +1600,44 @@ import DF from './comum.js';
 
   /* ------------------------------------------------------------ CAIXA */
   let diaCaixa = '';
+  /** Escolha de um dia, no mesmo estilo do seletor de período dos relatórios. */
+  const isoLocal = dt => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+  const somarDias = (iso, n) => { const dt = new Date(iso + 'T12:00:00'); dt.setDate(dt.getDate() + n); return isoLocal(dt); };
+  function seletorDia(dia) {
+    const hoje = isoLocal(new Date());
+    const nome = dia === hoje ? 'Hoje' : dia === somarDias(hoje, -1) ? 'Ontem' : new Date(dia + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long' }).replace(/^./, c => c.toUpperCase());
+    const atalhos = [[hoje, 'Hoje'], [somarDias(hoje, -1), 'Ontem'], [somarDias(hoje, -2), 'Anteontem'], [somarDias(hoje, -7), 'Mesmo dia da semana passada']];
+    return `<div class="seletor-dia"><button class="dia-seta" data-passo="-1" aria-label="Dia anterior">${icone('voltar', 18, 2.5)}</button>
+      <div class="suspenso periodo">
+        <button class="periodo-btn" id="periodoBtn" aria-expanded="false" aria-haspopup="true"><span class="pb-ic">${icone('calendario', 18, 2)}</span><span class="pb-txt"><b>${nome}</b><small>${dia.split('-').reverse().join('/')}</small></span>${icone('seta', 16, 2.5)}</button>
+        <div class="painel-suspenso periodo-menu oculto" id="periodoMenu">
+          <div class="pm-lista">${atalhos.map(([k, n]) => `<button data-dia="${k}" class="${dia === k ? 'marcado' : ''}">${n}${dia === k ? icone('check', 18, 2.5) : ''}</button>`).join('')}</div>
+          <div class="pm-datas"><span class="mu-rotulo">Escolher data</span><div class="pm-campos um"><label>Dia<input type="date" id="perDia" value="${dia}" max="${hoje}"></label></div>
+          <button class="btn btn-azul pm-aplicar" id="perAplicar">Ver este dia</button></div>
+        </div></div>
+      <button class="dia-seta" data-passo="1" aria-label="Próximo dia" ${dia >= hoje ? 'disabled' : ''}>${icone('seta', 18, 2.5)}</button></div>`;
+  }
+  function ligarDia(raizEl, aoMudar) {
+    const btn = raizEl.querySelector('#periodoBtn'), menu = raizEl.querySelector('#periodoMenu');
+    const atual = () => raizEl.querySelector('#perDia').defaultValue;
+    btn.onclick = e => { e.stopPropagation(); const abrir = menu.classList.contains('oculto'); document.querySelectorAll('.painel-suspenso').forEach(m => m.classList.add('oculto')); menu.classList.toggle('oculto', !abrir); btn.setAttribute('aria-expanded', abrir); };
+    menu.onclick = e => {
+      e.stopPropagation();
+      const b = e.target.closest('[data-dia]');
+      if (b) { menu.classList.add('oculto'); return aoMudar(b.dataset.dia); }
+      if (e.target.closest('#perAplicar')) { const v = menu.querySelector('#perDia').value; if (!v) return toast('Escolha um dia.', 'erro'); menu.classList.add('oculto'); aoMudar(v); }
+    };
+    raizEl.querySelectorAll('.dia-seta').forEach(s => s.onclick = () => aoMudar(somarDias(atual(), Number(s.dataset.passo))));
+  }
+
   async function caixaPg() {
     let r;
     try { r = await api('/api/caixa' + (diaCaixa ? '?dia=' + diaCaixa : '')); } catch (er) { return falhou(er); }
     const t = r.totais;
     const [a, m, d] = r.dia.split('-');
-    main().innerHTML = cabecalho('Fechamento de caixa', `${d}/${m}/${a}`, `<input type="date" id="dia" value="${r.dia}" class="filtro-dia" aria-label="Dia" style="height:46px;border-radius:14px;border:2px solid var(--linha);padding:0 12px;font-weight:600;background:var(--superficie);color:var(--texto)"><button class="btn btn-azul" id="imprimir">${icone('impressora', 18, 2)} Imprimir</button>`)
+    main().innerHTML = cabecalho('Fechamento de caixa', 'Tudo o que foi recebido no dia, por forma de pagamento.', `${seletorDia(r.dia)}<button class="btn btn-azul" id="imprimir">${icone('impressora', 18, 2)} Imprimir</button>`)
       + `<div class="numeros">
-        <div class="numero destaque"><small>Total recebido</small><b>${real(t.total)}</b><span>${t.contas} ${t.contas === 1 ? 'conta fechada' : 'contas fechadas'}</span></div>
+        <div class="numero destaque"><small>Total recebido</small><b data-contar="${t.total}" data-formato="real">${real(t.total)}</b><span>${t.contas} ${t.contas === 1 ? 'conta fechada' : 'contas fechadas'}</span></div>
         ${r.formas.map(f => `<div class="numero"><small>${FORMAS[f.forma]}</small><b>${real(f.total)}</b><span>${f.qtd} ${f.qtd === 1 ? 'pagamento' : 'pagamentos'}</span></div>`).join('')}
         <div class="numero"><small>Taxa de serviço</small><b>${real(t.taxa)}</b><span>consumo ${real(t.subtotal)}</span></div>
       </div>
@@ -1617,7 +1647,7 @@ import DF from './comum.js';
         ${r.contas.map(c => `<tr><td>${c.hora}</td><td><b>${esc(c.mesa || '—')}</b>${c.pessoas > 1 ? `<br><small class="sutil">${c.pessoas} pessoas</small>` : ''}</td><td>${real(c.subtotal)}</td><td>${c.taxa ? real(c.taxa) : '—'}</td><td><b>${real(c.total)}</b></td>
           <td>${c.pagamentos.map(p => `${FORMAS[p.forma] || p.forma} ${real(p.valor)}`).join('<br>')}</td><td class="sutil">${esc(c.quem || '')}</td></tr>`).join('')}
       </tbody></table></div>` : '<div class="vazio-painel"><b>Nenhuma conta fechada neste dia.</b><span>Escolha outra data acima.</span></div>'}`;
-    main().querySelector('#dia').onchange = e => { diaCaixa = e.target.value; caixaPg(); };
+    ligarDia(main(), dia => { diaCaixa = dia; caixaPg().then(() => contar(main())); });
     main().querySelector('#imprimir').onclick = () => imprimir(`<h1>${esc(r.estabelecimento)}</h1><div class="c">FECHAMENTO DE CAIXA</div><div class="c">${d}/${m}/${a}</div><hr>
       ${r.formas.map(f => `<div class="l"><span>${FORMAS[f.forma]} (${f.qtd})</span><span>${real(f.total)}</span></div>`).join('')}<hr>
       <div class="l"><span>Consumo</span><span>${real(t.subtotal)}</span></div><div class="l"><span>Taxa de serviço</span><span>${real(t.taxa)}</span></div>
@@ -1706,6 +1736,7 @@ import DF from './comum.js';
     }
     if (location.pathname === '/cadastro') history.replaceState(null, '', '/admin');
     if (eu.papel === 'cozinha') return location.href = '/cozinha';
+    abertura();
     layout();
   }
   iniciar();

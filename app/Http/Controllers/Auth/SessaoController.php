@@ -39,7 +39,7 @@ class SessaoController extends Controller
         self::entrarComo((int) $u['id']);
         $request->session()->put('lembrar', ! empty($in['lembrar']));
 
-        return response()->json(['ok' => true, 'papel' => $u['papel']]);
+        return response()->json(['ok' => true, 'papel' => $u['papel'], 'nome' => $u['nome']]);
     }
 
     public static function entrarComo(int $id): void
