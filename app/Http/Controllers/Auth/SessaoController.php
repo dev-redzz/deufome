@@ -49,6 +49,7 @@ class SessaoController extends Controller
         Auth::login(Usuario::findOrFail($id));
         $s->regenerate(true);
         $s->put('sv', (int) DB::scalar('SELECT sessao_versao FROM users WHERE id = ?', [$id]));
+        $s->put('boas_vindas', true);
         DB::update('UPDATE users SET ultimo_acesso = ? WHERE id = ?', [agora(), $id]);
     }
 
@@ -76,6 +77,7 @@ class SessaoController extends Controller
             'id' => $u['id'], 'nome' => $u['nome'], 'email' => $u['email'], 'papel' => $u['papel'],
             'estabelecimento' => $u['estabelecimento'], 'sem_volume' => sem_volume() && $u['papel'] === 'plataforma',
             'google' => (bool) DB::scalar('SELECT google_sub IS NOT NULL FROM users WHERE id = ?', [$u['id']]),
+            'boas_vindas' => (bool) request()->session()->pull('boas_vindas', false),
             'desde' => DB::scalar('SELECT created_at FROM users WHERE id = ?', [$u['id']]),
         ]);
     }

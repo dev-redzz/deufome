@@ -132,8 +132,6 @@ import DF from './comum.js';
         const r = await api('/api/login', { metodo: 'POST', dados: { email: f.email.value, senha: f.senha.value, lembrar: f.lembrar.checked } });
         if (r.papel === 'cozinha' || new URLSearchParams(location.search).get('voltar') === '/cozinha') return location.href = '/cozinha';
         history.replaceState(null, '', '/admin');
-        try { sessionStorage.setItem('deufome_abertura', '1'); } catch {}
-        abertura((r.nome || '').trim().split(/\s+/)[0] || 'bem-vindo');
         iniciar();
       } catch (er) { toast(er.message, 'erro'); b.disabled = false; }
     };
@@ -1736,7 +1734,8 @@ import DF from './comum.js';
     }
     if (location.pathname === '/cadastro') history.replaceState(null, '', '/admin');
     if (eu.papel === 'cozinha') return location.href = '/cozinha';
-    abertura();
+    if (eu.boas_vindas) { try { sessionStorage.setItem('deufome_abertura', '1'); } catch {} abertura((eu.nome || '').trim().split(/\s+/)[0] || 'bem-vindo'); }
+    else abertura();
     layout();
   }
   iniciar();
