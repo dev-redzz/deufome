@@ -1,1 +1,2 @@
 As fontes Nunito, Fraunces e Space Grotesk usam a SIL Open Font License 1.1 (https://openfontlicense.org), obtidas do projeto Fontsource.
+Space Mono: SIL Open Font License 1.1 (Fontsource).

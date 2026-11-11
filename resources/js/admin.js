@@ -91,10 +91,23 @@ import DF from './comum.js';
     clearInterval(timer);
     raiz.innerHTML = `<div class="login">
       <aside class="lado">
-        <div class="marca-grande">
-          <img src="/img/icone-escuro.png" alt="">
-          <b>Deu <span>Fome</span></b>
-          <p>${texto}</p>
+        <div class="impressora" aria-hidden="true">
+          <div class="boca"><span>DEU FOME · PDV</span><i></i></div>
+          <div class="saida"><div class="recibo">
+            <div class="rc-logo"><img src="/img/icone-escuro.png" alt=""><b>Deu <span>Fome</span></b></div>
+            <div class="rc-c">Comanda nº 000128 · Mesa 04 · ${new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</div>
+            <hr>
+            <div class="rc-itens">
+              <div class="rc-l"><span>2x Burger Clássico<small>sem cebola</small></span><span>57,80</span></div>
+              <div class="rc-l"><span>1x Batata Frita</span><span>22,90</span></div>
+              <div class="rc-l"><span>2x Suco Natural</span><span>21,80</span></div>
+              <hr>
+              <div class="rc-t"><span>TOTAL</span><span>R$ 102,50</span></div>
+              <hr>
+            </div>
+            <p class="rc-frase">${texto}</p>
+            <span class="carimbo">Na cozinha</span>
+          </div></div>
         </div>
       </aside>
       <main class="formulario">${conteudo}

@@ -1,4 +1,9 @@
-# Deu Fome — versão 3.0 (Laravel)
+# Deu Fome — versão 4.0 (Laravel)
+
+## Novidades da 4.0
+- Novo visual "Comanda de papel": bancada de inox, cartões de papel térmico com borda serrilhada, carimbos de status, preços em letra de cupom fiscal (Space Mono, licença OFL).
+- Login com impressora imprimindo a comanda; site, painel, tablet e cozinha (trilho de comandas) no mesmo estilo.
+
 
 ## Novidades da 3.0
 - Tablet redesenhado: comanda ao lado nas telas grandes, guia "Como pedir", pedido ao vivo no topo, vitrine de pratos na tela inicial.

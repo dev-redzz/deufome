@@ -12,8 +12,8 @@
 <title>@yield('titulo', 'Deu Fome · Cada mesa com seu próprio cardápio')</title>
 @vite(['resources/css/app.css'])
 </head>
-<body class="bg-white text-marinho font-sans antialiased">
-<header class="sticky top-0 z-30 bg-white/90 backdrop-blur border-b border-linha">
+<body class="site-corpo text-marinho font-sans antialiased">
+<header class="sticky top-0 z-30 bg-papel/95 backdrop-blur border-b-2 border-dashed border-[#D9CFBC]">
   <div class="mx-auto max-w-6xl px-4 sm:px-6 h-16 flex items-center gap-4">
     <a href="/" aria-label="Deu Fome, início" class="shrink-0"><img src="/img/logo.png" alt="Deu Fome" class="h-9"></a>
     <nav class="ml-auto flex items-center gap-1 sm:gap-2 text-[15px] font-semibold">
@@ -21,7 +21,7 @@
       <a href="/#recursos" class="hidden md:inline px-3 py-2 rounded-lg text-texto-2 hover:text-marinho">Recursos</a>
       <a href="/#duvidas" class="hidden md:inline px-3 py-2 rounded-lg text-texto-2 hover:text-marinho">Dúvidas</a>
       <a href="/admin" class="px-3 py-2 rounded-lg hover:bg-nevoa">Entrar</a>
-      <a href="/cadastro" class="px-4 py-2.5 rounded-xl bg-brasa text-white hover:bg-brasa-escura">Criar conta grátis</a>
+      <a href="/cadastro" class="sc-btn sc-btn-brasa sc-btn-p">Criar conta grátis</a>
     </nav>
   </div>
 </header>

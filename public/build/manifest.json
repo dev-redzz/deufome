@@ -4,7 +4,7 @@
     "name": "comum"
   },
   "resources/css/app.css": {
-    "file": "assets/app-v-xTgmB4.css",
+    "file": "assets/app-BWLyP5WV.css",
     "name": "app",
     "names": [
       "app.css"
@@ -13,7 +13,7 @@
     "isEntry": true
   },
   "resources/js/admin.js": {
-    "file": "assets/admin-DpMpl4uP.js",
+    "file": "assets/admin-D8iigYe4.js",
     "name": "admin",
     "src": "resources/js/admin.js",
     "isEntry": true,
